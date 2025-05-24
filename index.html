@@ -1,4 +1,9 @@
-<!DOCTYPE html>
+// 💾 Save settings to Google Sheets
+        async function saveSettingsToSheets(type, value) {
+            try {
+                updateSyncStatus('loading', '🔄 Saving settings to Google Sheets...');
+                
+                const params<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -592,7 +597,7 @@
                     <h3 class="settings-title">Google Sheets Integration</h3>
                     <div class="form-group">
                         <label>Sheet URL:</label>
-                        <input type="text" id="sheetUrl" placeholder="Google Apps Script URL" value="https://script.google.com/macros/s/AKfycbxbVjae0dWzQ3bsoBZMHaSNNYUqVH32NDb_lKkEaLExpTnqKvCm2sD28FW8t42N9oGPzQ/exec">
+                        <input type="text" id="sheetUrl" placeholder="Google Apps Script URL" value="https://script.google.com/macros/s/AKfycbzssMRrZCJfV0Pknrs5h-WdzSCeXkzZphWDP3XV6Au3ngeaxq50V8AKXwDVs-aJvWgG4w/exec">
                         <button class="btn btn-primary" onclick="updateSheetUrl()" style="margin-top: 10px;">Update URL</button>
                         <button class="btn btn-info" onclick="syncWithSheets()" style="margin-top: 10px;">🔄 Sync Now</button>
                     </div>
@@ -1082,7 +1087,7 @@
 
         // Update Google Sheets URL
         function updateSheetUrl() {
-            const newUrl = document.getElementById('sheetUrl').value.trim();
+            const newUrl = safeString(document.getElementById('sheetUrl').value);
             if (newUrl) {
                 sheetsUrl = newUrl;
                 showNotification('Google Sheets URL updated successfully!', 'success');
@@ -1768,21 +1773,32 @@
             }
         });
 
-        // Manage departments
-        function addDepartment() {
+        // Manage departments with Google Sheets sync
+        async function addDepartment() {
             const newDept = safeString(document.getElementById('newDepartment').value);
-            if (newDept && !departments.includes(newDept)) {
+            if (!newDept) {
+                showNotification('Please enter a department name!', 'error');
+                return;
+            }
+            
+            if (departments.includes(newDept)) {
+                showNotification('Department already exists!', 'error');
+                return;
+            }
+
+            // Save to Google Sheets first
+            const saved = await saveSettingsToSheets('department', newDept);
+            
+            if (saved) {
                 departments.push(newDept);
                 updateAllDropdowns();
                 updateSettingsLists();
                 document.getElementById('newDepartment').value = '';
-                showNotification('Department added successfully!', 'success');
-            } else if (departments.includes(newDept)) {
-                showNotification('Department already exists!', 'error');
+                showNotification('Department added and saved to Google Sheets!', 'success');
             }
         }
 
-        function removeDepartment(dept) {
+        async function removeDepartment(dept) {
             if (confirm('Are you sure you want to delete this department?')) {
                 const index = departments.indexOf(dept);
                 if (index > -1) {
@@ -1790,21 +1806,35 @@
                     updateAllDropdowns();
                     updateSettingsLists();
                     showNotification('Department deleted successfully!', 'success');
+                    
+                    // Note: In a full implementation, you'd also call an API to remove from sheets
+                    // For now, we'll just remove locally and re-sync will restore if needed
                 }
             }
         }
 
-        // Manage job titles
-        function addJobTitle() {
-            const newTitle = document.getElementById('newJobTitle').value.trim();
-            if (newTitle && !jobTitles.includes(newTitle)) {
+        // Manage job titles with Google Sheets sync
+        async function addJobTitle() {
+            const newTitle = safeString(document.getElementById('newJobTitle').value);
+            if (!newTitle) {
+                showNotification('Please enter a job title!', 'error');
+                return;
+            }
+            
+            if (jobTitles.includes(newTitle)) {
+                showNotification('Job title already exists!', 'error');
+                return;
+            }
+
+            // Save to Google Sheets first
+            const saved = await saveSettingsToSheets('jobTitle', newTitle);
+            
+            if (saved) {
                 jobTitles.push(newTitle);
                 updateAllDropdowns();
                 updateSettingsLists();
                 document.getElementById('newJobTitle').value = '';
-                showNotification('Job title added successfully!', 'success');
-            } else if (jobTitles.includes(newTitle)) {
-                showNotification('Job title already exists!', 'error');
+                showNotification('Job title added and saved to Google Sheets!', 'success');
             }
         }
 
@@ -1820,16 +1850,27 @@
             }
         }
 
-        // Manage locations
-        function addLocation() {
-            const newLocation = document.getElementById('newLocation').value.trim();
-            if (newLocation && !locations.includes(newLocation)) {
+        // Manage locations with Google Sheets sync
+        async function addLocation() {
+            const newLocation = safeString(document.getElementById('newLocation').value);
+            if (!newLocation) {
+                showNotification('Please enter a location name!', 'error');
+                return;
+            }
+            
+            if (locations.includes(newLocation)) {
+                showNotification('Location already exists!', 'error');
+                return;
+            }
+
+            // Save to Google Sheets first
+            const saved = await saveSettingsToSheets('location', newLocation);
+            
+            if (saved) {
                 locations.push(newLocation);
                 updateSettingsLists();
                 document.getElementById('newLocation').value = '';
-                showNotification('Location added successfully!', 'success');
-            } else if (locations.includes(newLocation)) {
-                showNotification('Location already exists!', 'error');
+                showNotification('Location added and saved to Google Sheets!', 'success');
             }
         }
 
@@ -1911,20 +1952,27 @@
                         return;
                     }
 
-                    // Convert data to required format
-                    const importedEmployees = jsonData.map(row => ({
-                        name: row.Name || row.name || '',
-                        id: (row.ID || row.id || row['Employee ID'] || Math.floor(Math.random() * 100000)).toString(),
-                        email: row.Email || row.email || '',
-                        department: row.Department || row.department || '',
-                        jobTitle: row['Job Title'] || row['Job title'] || row.jobTitle || '',
-                        location: row.Location || row.location || '',
-                        nationality: row.Nationality || row.nationality || '',
-                        status: (row.Status || row.status || 'active').toLowerCase(),
-                        startDate: row['Start Date'] || row.startDate || '',
-                        endDate: row['End Date'] || row.endDate || '',
-                        notes: row.Notes || row.notes || ''
-                    })).filter(emp => emp.name);
+                    // Convert data to required format with SAFE handling
+                    const importedEmployees = jsonData.map((row, index) => {
+                        try {
+                            return {
+                                name: safeString(safeGet(row, 'Name', 'name')),
+                                id: safeString(safeGet(row, 'ID', 'id', 'Employee ID')) || (200000 + index).toString(),
+                                email: safeString(safeGet(row, 'Email', 'email')),
+                                department: safeString(safeGet(row, 'Department', 'department')),
+                                jobTitle: safeString(safeGet(row, 'Job Title', 'Job title', 'jobTitle')),
+                                location: safeString(safeGet(row, 'Location', 'location')),
+                                nationality: safeString(safeGet(row, 'Nationality', 'nationality')),
+                                status: safeString(safeGet(row, 'Status', 'status')) || 'active',
+                                startDate: safeString(safeGet(row, 'Start Date', 'startDate')),
+                                endDate: safeString(safeGet(row, 'End Date', 'endDate')),
+                                notes: safeString(safeGet(row, 'Notes', 'notes'))
+                            };
+                        } catch (rowError) {
+                            console.error(`Error processing import row ${index}:`, rowError);
+                            return null;
+                        }
+                    }).filter(emp => emp && emp.name);
 
                     if (confirm(`Found ${importedEmployees.length} employees. Do you want to add them to the system?`)) {
                         // Add imported employees to existing data
