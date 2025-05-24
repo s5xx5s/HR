@@ -501,8 +501,8 @@
             color: white;
         }
 
-        .notification.info {
-            background: #4299e1;
+        .notification.error {
+            background: #f56565;
             color: white;
         }
 
@@ -1231,7 +1231,7 @@
             // Employees content
             document.getElementById('employeesContent').innerHTML = `
                 <div class="action-buttons">
-                    <button class="action-btn btn-success" onclick="console.log('Add button clicked'); showAddForm();">
+                    <button class="action-btn btn-success" onclick="showAddForm()">
                         ➕ Add New Employee
                     </button>
                     <button class="action-btn btn-info" onclick="exportToExcel()">
