@@ -1,9 +1,4 @@
-// 💾 Save settings to Google Sheets
-        async function saveSettingsToSheets(type, value) {
-            try {
-                updateSyncStatus('loading', '🔄 Saving settings to Google Sheets...');
-                
-                const params<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1773,32 +1768,21 @@
             }
         });
 
-        // Manage departments with Google Sheets sync
-        async function addDepartment() {
+        // Manage departments
+        function addDepartment() {
             const newDept = safeString(document.getElementById('newDepartment').value);
-            if (!newDept) {
-                showNotification('Please enter a department name!', 'error');
-                return;
-            }
-            
-            if (departments.includes(newDept)) {
-                showNotification('Department already exists!', 'error');
-                return;
-            }
-
-            // Save to Google Sheets first
-            const saved = await saveSettingsToSheets('department', newDept);
-            
-            if (saved) {
+            if (newDept && !departments.includes(newDept)) {
                 departments.push(newDept);
                 updateAllDropdowns();
                 updateSettingsLists();
                 document.getElementById('newDepartment').value = '';
-                showNotification('Department added and saved to Google Sheets!', 'success');
+                showNotification('Department added successfully!', 'success');
+            } else if (departments.includes(newDept)) {
+                showNotification('Department already exists!', 'error');
             }
         }
 
-        async function removeDepartment(dept) {
+        function removeDepartment(dept) {
             if (confirm('Are you sure you want to delete this department?')) {
                 const index = departments.indexOf(dept);
                 if (index > -1) {
@@ -1806,35 +1790,21 @@
                     updateAllDropdowns();
                     updateSettingsLists();
                     showNotification('Department deleted successfully!', 'success');
-                    
-                    // Note: In a full implementation, you'd also call an API to remove from sheets
-                    // For now, we'll just remove locally and re-sync will restore if needed
                 }
             }
         }
 
-        // Manage job titles with Google Sheets sync
-        async function addJobTitle() {
+        // Manage job titles
+        function addJobTitle() {
             const newTitle = safeString(document.getElementById('newJobTitle').value);
-            if (!newTitle) {
-                showNotification('Please enter a job title!', 'error');
-                return;
-            }
-            
-            if (jobTitles.includes(newTitle)) {
-                showNotification('Job title already exists!', 'error');
-                return;
-            }
-
-            // Save to Google Sheets first
-            const saved = await saveSettingsToSheets('jobTitle', newTitle);
-            
-            if (saved) {
+            if (newTitle && !jobTitles.includes(newTitle)) {
                 jobTitles.push(newTitle);
                 updateAllDropdowns();
                 updateSettingsLists();
                 document.getElementById('newJobTitle').value = '';
-                showNotification('Job title added and saved to Google Sheets!', 'success');
+                showNotification('Job title added successfully!', 'success');
+            } else if (jobTitles.includes(newTitle)) {
+                showNotification('Job title already exists!', 'error');
             }
         }
 
@@ -1850,27 +1820,16 @@
             }
         }
 
-        // Manage locations with Google Sheets sync
-        async function addLocation() {
+        // Manage locations
+        function addLocation() {
             const newLocation = safeString(document.getElementById('newLocation').value);
-            if (!newLocation) {
-                showNotification('Please enter a location name!', 'error');
-                return;
-            }
-            
-            if (locations.includes(newLocation)) {
-                showNotification('Location already exists!', 'error');
-                return;
-            }
-
-            // Save to Google Sheets first
-            const saved = await saveSettingsToSheets('location', newLocation);
-            
-            if (saved) {
+            if (newLocation && !locations.includes(newLocation)) {
                 locations.push(newLocation);
                 updateSettingsLists();
                 document.getElementById('newLocation').value = '';
-                showNotification('Location added and saved to Google Sheets!', 'success');
+                showNotification('Location added successfully!', 'success');
+            } else if (locations.includes(newLocation)) {
+                showNotification('Location already exists!', 'error');
             }
         }
 
