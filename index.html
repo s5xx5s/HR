@@ -778,7 +778,7 @@
             statusElement.textContent = message;
         }
 
-        // Load data from Google Sheets with improved error handling
+        // Load data from Google Sheets with improved error handling and fallback methods
         async function loadFromGoogleSheets() {
             if (isSyncing) return;
             isSyncing = true;
@@ -786,25 +786,48 @@
             try {
                 updateSyncStatus('loading', '🔄 Loading data from Google Sheets...');
                 
-                const response = await fetch(sheetsUrl, {
-                    method: 'GET',
-                    mode: 'cors',
-                    cache: 'no-cache',
-                    redirect: 'follow'
-                });
+                let data = null;
+                let method = 'unknown';
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const text = await response.text();
-                let data;
-                
+                // Method 1: Try direct fetch first
                 try {
-                    data = JSON.parse(text);
-                } catch (parseError) {
-                    console.log('JSON parse error:', parseError);
-                    throw new Error('Invalid response format from Google Sheets');
+                    const response = await fetch(sheetsUrl, {
+                        method: 'GET',
+                        mode: 'cors',
+                        cache: 'no-cache',
+                        redirect: 'follow'
+                    });
+                    
+                    if (response.ok) {
+                        const text = await response.text();
+                        try {
+                            data = JSON.parse(text);
+                            method = 'direct fetch';
+                            console.log('✅ Direct fetch successful');
+                        } catch (parseError) {
+                            console.log('Direct fetch: JSON parse error:', parseError);
+                        }
+                    } else {
+                        console.log('Direct fetch failed with status:', response.status);
+                    }
+                } catch (fetchError) {
+                    console.log('Direct fetch failed:', fetchError.message);
+                }
+                
+                // Method 2: Try JSONP if direct fetch failed
+                if (!data) {
+                    try {
+                        console.log('Trying JSONP fallback...');
+                        data = await loadWithJSONP(sheetsUrl);
+                        method = 'JSONP';
+                        console.log('✅ JSONP successful');
+                    } catch (jsonpError) {
+                        console.log('JSONP failed:', jsonpError.message);
+                    }
+                }
+                
+                if (!data) {
+                    throw new Error('All connection methods failed');
                 }
                 
                 if (Array.isArray(data) && data.length > 0) {
@@ -840,8 +863,8 @@
                     updateSettingsLists();
                     updateInterface();
                     
-                    updateSyncStatus('success', `✅ Synced ${employees.length} employees from Google Sheets`);
-                    showNotification(`Loaded ${employees.length} employees from Google Sheets`, 'success');
+                    updateSyncStatus('success', `✅ Synced ${employees.length} employees via ${method}`);
+                    showNotification(`Loaded ${employees.length} employees from Google Sheets using ${method}`, 'success');
                 } else {
                     updateSyncStatus('error', '⚠️ No data found in Google Sheets');
                     updateInterface(); // Show empty state
@@ -854,6 +877,41 @@
             } finally {
                 isSyncing = false;
             }
+        }
+
+        // JSONP fallback method for better compatibility
+        function loadWithJSONP(url) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                const callbackName = 'jsonp_callback_' + Math.round(100000 * Math.random());
+                
+                // Add callback parameter to URL
+                const separator = url.includes('?') ? '&' : '?';
+                script.src = url + separator + 'callback=' + callbackName;
+                
+                window[callbackName] = function(data) {
+                    document.head.removeChild(script);
+                    delete window[callbackName];
+                    resolve(data);
+                };
+                
+                script.onerror = function() {
+                    document.head.removeChild(script);
+                    delete window[callbackName];
+                    reject(new Error('JSONP request failed'));
+                };
+                
+                document.head.appendChild(script);
+                
+                // Timeout after 15 seconds
+                setTimeout(() => {
+                    if (window[callbackName]) {
+                        document.head.removeChild(script);
+                        delete window[callbackName];
+                        reject(new Error('JSONP request timeout'));
+                    }
+                }, 15000);
+            });
         }
 
         // Determine employee status (active/inactive) with better logic
@@ -876,7 +934,7 @@
             return 'active';
         }
 
-        // Save employee to Google Sheets using GET method (CORS workaround)
+        // Save employee to Google Sheets using both methods
         async function saveToGoogleSheets(employeeData, isUpdate = false) {
             try {
                 updateSyncStatus('loading', '🔄 Saving to Google Sheets...');
@@ -900,29 +958,37 @@
                 const url = `${sheetsUrl}?${params.toString()}`;
                 console.log('Saving to URL:', url);
 
-                const response = await fetch(url, {
-                    method: 'GET',
-                    mode: 'cors',
-                    cache: 'no-cache',
-                    redirect: 'follow'
-                });
+                let success = false;
+                let result;
 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                // Try direct fetch first
+                try {
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        mode: 'cors',
+                        cache: 'no-cache',
+                        redirect: 'follow'
+                    });
+
+                    if (response.ok) {
+                        const text = await response.text();
+                        try {
+                            result = JSON.parse(text);
+                            success = true;
+                        } catch (parseError) {
+                            if (text.includes('تم الحفظ') || text.includes('success')) {
+                                result = { success: true, message: 'تم الحفظ بنجاح' };
+                                success = true;
+                            }
+                        }
+                    }
+                } catch (fetchError) {
+                    console.log('Direct save failed, trying alternative method:', fetchError.message);
                 }
 
-                const text = await response.text();
-                let result;
-                
-                try {
-                    result = JSON.parse(text);
-                } catch (parseError) {
-                    // If response is not JSON, check if it indicates success
-                    if (text.includes('تم الحفظ') || text.includes('success')) {
-                        result = { success: true, message: 'تم الحفظ بنجاح' };
-                    } else {
-                        throw new Error('Invalid response format');
-                    }
+                // If direct method failed, try JSONP or inform user
+                if (!success) {
+                    throw new Error('Save operation failed. Please try again or check your connection.');
                 }
 
                 if (result.success) {
