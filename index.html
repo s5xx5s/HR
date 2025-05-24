@@ -762,7 +762,7 @@
         let locations = [];
         let editingIndex = -1;
         let charts = {};
-        let sheetsUrl = 'https://script.google.com/macros/s/AKfycbzssMRrZCJfV0Pknrs5h-WdzSCeXkzZphWDP3XV6Au3ngeaxq50V8AKXwDVs-aJvWgG4w/exec';
+        let sheetsUrl = 'https://script.google.com/macros/s/AKfycbxbVjae0dWzQ3bsoBZMHaSNNYUqVH32NDb_lKkEaLExpTnqKvCm2sD28FW8t42N9oGPzQ/exec';
         let isSyncing = false;
 
         // Initialize application
@@ -833,31 +833,40 @@
                 if (Array.isArray(data) && data.length > 0) {
                     // Convert Google Sheets data to our format with better field mapping
                     employees = data.map(row => {
-                        // Generate ID if missing
+                        // Generate ID if missing - handle all data types safely
                         let employeeId = row.ID || row.id || '';
-                        if (!employeeId || employeeId.trim() === '') {
+                        
+                        // Convert to string and handle null/undefined/numbers safely
+                        if (employeeId === null || employeeId === undefined) {
+                            employeeId = '';
+                        } else {
+                            employeeId = String(employeeId).trim();
+                        }
+                        
+                        // If still empty after conversion, generate new ID
+                        if (!employeeId || employeeId === '') {
                             employeeId = Math.floor(Math.random() * 100000).toString();
                         }
 
                         return {
-                            name: row.Name || row.name || '',
+                            name: String(row.Name || row.name || '').trim(),
                             id: employeeId,
-                            email: row.Email || row.email || '',
-                            department: row.Department || row.department || '',
-                            jobTitle: row['Job Title'] || row['Job title'] || row.jobTitle || '',
-                            location: row.Location || row.location || '',
-                            nationality: row.Nationality || row.nationality || '',
+                            email: String(row.Email || row.email || '').trim(),
+                            department: String(row.Department || row.department || '').trim(),
+                            jobTitle: String(row['Job Title'] || row['Job title'] || row.jobTitle || '').trim(),
+                            location: String(row.Location || row.location || '').trim(),
+                            nationality: String(row.Nationality || row.nationality || '').trim(),
                             status: determineStatus(row),
-                            startDate: row['Start Date'] || row.startDate || '',
-                            endDate: row['End Date'] || row.endDate || '',
-                            notes: row.Notes || row.Note || row.notes || ''
+                            startDate: String(row['Start Date'] || row.startDate || '').trim(),
+                            endDate: String(row['End Date'] || row.endDate || '').trim(),
+                            notes: String(row.Notes || row.Note || row.notes || '').trim()
                         };
-                    }).filter(emp => emp.name && emp.name.trim() !== '');
+                    }).filter(emp => emp.name && emp.name !== '');
 
-                    // Extract unique values for dropdowns
-                    departments = [...new Set(employees.map(emp => emp.department))].filter(d => d && d.trim() !== '');
-                    jobTitles = [...new Set(employees.map(emp => emp.jobTitle))].filter(j => j && j.trim() !== '');
-                    locations = [...new Set(employees.map(emp => emp.location))].filter(l => l && l.trim() !== '');
+                    // Extract unique values for dropdowns - safely handle all data types
+                    departments = [...new Set(employees.map(emp => emp.department))].filter(d => d && d !== '');
+                    jobTitles = [...new Set(employees.map(emp => emp.jobTitle))].filter(j => j && j !== '');
+                    locations = [...new Set(employees.map(emp => emp.location))].filter(l => l && l !== '');
 
                     updateAllDropdowns();
                     updateSettingsLists();
@@ -914,23 +923,27 @@
             });
         }
 
-        // Determine employee status (active/inactive) with better logic
+        // Determine employee status (active/inactive) with safer data handling
         function determineStatus(row) {
-            const status = (row.Status || row.status || '').toLowerCase();
+            const status = String(row.Status || row.status || '').toLowerCase().trim();
             
             // If status is explicitly set, use it
             if (status === 'active' || status === 'نشط') return 'active';
             if (status === 'inactive' || status === 'غير نشط') return 'inactive';
             
             // If no explicit status, determine based on end date
-            const endDate = row['End Date'] || row.endDate || '';
-            if (endDate) {
-                const contractEndDate = new Date(endDate);
-                const today = new Date();
-                return contractEndDate >= today ? 'active' : 'inactive';
+            const endDate = String(row['End Date'] || row.endDate || '').trim();
+            if (endDate && endDate !== '') {
+                try {
+                    const contractEndDate = new Date(endDate);
+                    const today = new Date();
+                    return contractEndDate >= today ? 'active' : 'inactive';
+                } catch (dateError) {
+                    console.log('Invalid date format:', endDate);
+                }
             }
             
-            // Default to active if no end date
+            // Default to active if no end date or invalid date
             return 'active';
         }
 
@@ -1673,9 +1686,18 @@
                 return;
             }
             
+            // Generate ID if empty - handle safely
+            let employeeId = document.getElementById('employeeId').value;
+            
+            // Convert to string and trim safely
+            if (employeeId === null || employeeId === undefined) {
+                employeeId = '';
+            } else {
+                employeeId = String(employeeId).trim();
+            }
+            
             // Generate ID if empty
-            let employeeId = document.getElementById('employeeId').value.trim();
-            if (!employeeId) {
+            if (!employeeId || employeeId === '') {
                 employeeId = Math.floor(Math.random() * 100000).toString();
             }
             
@@ -1690,17 +1712,17 @@
             }
             
             const employee = {
-                name: document.getElementById('employeeName').value.trim(),
+                name: String(document.getElementById('employeeName').value || '').trim(),
                 id: employeeId,
-                email: document.getElementById('employeeEmail').value.trim(),
-                department: document.getElementById('employeeDepartment').value,
-                jobTitle: document.getElementById('employeeJobTitle').value,
-                location: document.getElementById('employeeLocation').value.trim(),
-                nationality: document.getElementById('employeeNationality').value,
-                status: document.getElementById('employeeStatus').value,
-                startDate: document.getElementById('employeeStartDate').value,
-                endDate: document.getElementById('employeeEndDate').value,
-                notes: document.getElementById('employeeNotes').value.trim()
+                email: String(document.getElementById('employeeEmail').value || '').trim(),
+                department: String(document.getElementById('employeeDepartment').value || '').trim(),
+                jobTitle: String(document.getElementById('employeeJobTitle').value || '').trim(),
+                location: String(document.getElementById('employeeLocation').value || '').trim(),
+                nationality: String(document.getElementById('employeeNationality').value || '').trim(),
+                status: String(document.getElementById('employeeStatus').value || 'active').trim(),
+                startDate: String(document.getElementById('employeeStartDate').value || '').trim(),
+                endDate: String(document.getElementById('employeeEndDate').value || '').trim(),
+                notes: String(document.getElementById('employeeNotes').value || '').trim()
             };
             
             // Auto-update status based on end date
