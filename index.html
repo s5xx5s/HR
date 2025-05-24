@@ -1029,7 +1029,7 @@
             }
         }
 
-        // Delete employee from Google Sheets using GET method
+        // Delete employee from Google Sheets using GET method - Fixed version
         async function deleteFromGoogleSheets(employeeId) {
             try {
                 updateSyncStatus('loading', '🔄 Deleting from Google Sheets...');
@@ -1050,18 +1050,22 @@
                 });
 
                 if (!response.ok) {
+                    console.log('Response not OK:', response.status);
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
                 const text = await response.text();
+                console.log('Delete response:', text);
+                
                 let result;
                 
                 try {
                     result = JSON.parse(text);
                 } catch (parseError) {
-                    if (text.includes('تم الحذف') || text.includes('success')) {
+                    if (text.includes('تم الحذف') || text.includes('success') || text.includes('deleted')) {
                         result = { success: true, message: 'تم الحذف بنجاح' };
                     } else {
+                        console.log('Parse error:', parseError);
                         throw new Error('Invalid response format');
                     }
                 }
@@ -1070,6 +1074,7 @@
                     updateSyncStatus('success', '✅ Deleted from Google Sheets');
                     return true;
                 } else {
+                    console.log('Delete operation failed:', result);
                     throw new Error(result.error || 'Failed to delete');
                 }
             } catch (error) {
@@ -1609,8 +1614,19 @@
         // Show add form
         function showAddForm() {
             document.getElementById('formTitle').textContent = 'Add New Employee';
-            document.getElementById('employeeFormData').reset();
-            document.getElementById('employeeStatus').value = 'active';
+            
+            // Reset form
+            const form = document.getElementById('employeeFormData');
+            if (form) {
+                form.reset();
+            }
+            
+            // Set default status
+            const statusSelect = document.getElementById('employeeStatus');
+            if (statusSelect) {
+                statusSelect.value = 'active';
+            }
+            
             editingIndex = -1;
             document.getElementById('employeeForm').style.display = 'flex';
         }
@@ -1654,18 +1670,25 @@
             }
         }
 
-        // Delete employee
+        // Delete employee - Fixed version
         async function deleteEmployee(index) {
             if (confirm('Are you sure you want to delete this employee?')) {
                 const employee = employees[index];
                 
-                // Try to delete from Google Sheets first
-                const success = await deleteFromGoogleSheets(employee.id);
-                
-                if (success) {
-                    employees.splice(index, 1);
-                    updateInterface();
-                    showNotification('Employee deleted successfully!', 'success');
+                try {
+                    // Try to delete from Google Sheets first
+                    const success = await deleteFromGoogleSheets(employee.id);
+                    
+                    if (success) {
+                        employees.splice(index, 1);
+                        updateInterface();
+                        showNotification('Employee deleted successfully!', 'success');
+                    } else {
+                        showNotification('Failed to delete from Google Sheets', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error deleting employee:', error);
+                    showNotification(`Error deleting employee: ${error.message}`, 'error');
                 }
             }
         }
@@ -1687,91 +1710,118 @@
             return true;
         }
 
-        // Save employee
-        document.getElementById('employeeFormData').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            // Validate dates
-            if (!validateDates()) {
-                return;
-            }
-            
-            // Generate ID if empty - handle safely
-            let employeeId = document.getElementById('employeeId').value;
-            
-            // Convert to string and trim safely using our helper function
-            employeeId = safeString(employeeId);
-            
-            // Generate ID if empty
-            if (!employeeId) {
-                employeeId = Math.floor(Math.random() * 100000).toString();
-            }
-            
-            // Check for unique employee ID
-            const existingEmployee = employees.find((emp, index) => 
-                emp.id === employeeId && index !== editingIndex
-            );
-            
-            if (existingEmployee) {
-                showNotification('Employee ID already exists! Please use a different ID.', 'error');
-                return;
-            }
-            
-            const employee = {
-                name: safeString(document.getElementById('employeeName').value),
-                id: employeeId,
-                email: safeString(document.getElementById('employeeEmail').value),
-                department: safeString(document.getElementById('employeeDepartment').value),
-                jobTitle: safeString(document.getElementById('employeeJobTitle').value),
-                location: safeString(document.getElementById('employeeLocation').value),
-                nationality: safeString(document.getElementById('employeeNationality').value),
-                status: safeString(document.getElementById('employeeStatus').value) || 'active',
-                startDate: safeString(document.getElementById('employeeStartDate').value),
-                endDate: safeString(document.getElementById('employeeEndDate').value),
-                notes: safeString(document.getElementById('employeeNotes').value)
-            };
-            
-            // Auto-update status based on end date
-            if (employee.endDate) {
-                const today = new Date();
-                const contractEndDate = new Date(employee.endDate);
-                
-                if (contractEndDate < today) {
-                    employee.status = 'inactive';
+        // Handle form submission
+        function handleSubmit(event) {
+            event.preventDefault();
+            saveEmployee();
+        }
+
+        // Save employee - Fixed version
+        async function saveEmployee() {
+            try {
+                // Validate required fields
+                const name = safeString(document.getElementById('employeeName').value);
+                const department = safeString(document.getElementById('employeeDepartment').value);
+                const jobTitle = safeString(document.getElementById('employeeJobTitle').value);
+
+                if (!name) {
+                    showNotification('Employee name is required!', 'error');
+                    return;
                 }
-            }
-            
-            // Save to Google Sheets
-            const isUpdate = editingIndex >= 0;
-            const success = await saveToGoogleSheets(employee, isUpdate);
-            
-            if (success) {
-                if (editingIndex >= 0) {
-                    employees[editingIndex] = employee;
+                if (!department) {
+                    showNotification('Department is required!', 'error');
+                    return;
+                }
+                if (!jobTitle) {
+                    showNotification('Job title is required!', 'error');
+                    return;
+                }
+
+                // Validate dates
+                if (!validateDates()) {
+                    return;
+                }
+                
+                // Generate ID if empty
+                let employeeId = safeString(document.getElementById('employeeId').value);
+                if (!employeeId) {
+                    employeeId = Math.floor(Math.random() * 100000).toString();
+                }
+                
+                // Check for unique employee ID
+                const existingEmployee = employees.find((emp, index) => 
+                    emp.id === employeeId && index !== editingIndex
+                );
+                
+                if (existingEmployee) {
+                    showNotification('Employee ID already exists! Please use a different ID.', 'error');
+                    return;
+                }
+                
+                const employee = {
+                    name: name,
+                    id: employeeId,
+                    email: safeString(document.getElementById('employeeEmail').value),
+                    department: department,
+                    jobTitle: jobTitle,
+                    location: safeString(document.getElementById('employeeLocation').value),
+                    nationality: safeString(document.getElementById('employeeNationality').value),
+                    status: safeString(document.getElementById('employeeStatus').value) || 'active',
+                    startDate: safeString(document.getElementById('employeeStartDate').value),
+                    endDate: safeString(document.getElementById('employeeEndDate').value),
+                    notes: safeString(document.getElementById('employeeNotes').value)
+                };
+                
+                // Auto-update status based on end date
+                if (employee.endDate) {
+                    const today = new Date();
+                    const contractEndDate = new Date(employee.endDate);
+                    
+                    if (contractEndDate < today) {
+                        employee.status = 'inactive';
+                    }
+                }
+                
+                // Save to Google Sheets
+                const isUpdate = editingIndex >= 0;
+                const success = await saveToGoogleSheets(employee, isUpdate);
+                
+                if (success) {
+                    if (editingIndex >= 0) {
+                        employees[editingIndex] = employee;
+                    } else {
+                        employees.push(employee);
+                    }
+                    
+                    // Update related data
+                    if (employee.department && !departments.includes(employee.department)) {
+                        departments.push(employee.department);
+                    }
+                    if (employee.jobTitle && !jobTitles.includes(employee.jobTitle)) {
+                        jobTitles.push(employee.jobTitle);
+                    }
+                    if (employee.location && !locations.includes(employee.location)) {
+                        locations.push(employee.location);
+                    }
+                    
+                    updateAllDropdowns();
+                    updateSettingsLists();
+                    hideForm();
+                    updateInterface();
+                    
+                    const message = editingIndex >= 0 ? 'Employee updated successfully!' : 'Employee added successfully!';
+                    showNotification(message, 'success');
+                    
+                    // Reset editing index
+                    editingIndex = -1;
                 } else {
-                    employees.push(employee);
+                    showNotification('Failed to save employee to Google Sheets', 'error');
                 }
-                
-                // Update related data
-                if (employee.department && !departments.includes(employee.department)) {
-                    departments.push(employee.department);
-                }
-                if (employee.jobTitle && !jobTitles.includes(employee.jobTitle)) {
-                    jobTitles.push(employee.jobTitle);
-                }
-                if (employee.location && !locations.includes(employee.location)) {
-                    locations.push(employee.location);
-                }
-                
-                updateAllDropdowns();
-                updateSettingsLists();
-                hideForm();
-                updateInterface();
-                
-                const message = editingIndex >= 0 ? 'Employee updated successfully!' : 'Employee added successfully!';
-                showNotification(message, 'success');
+            } catch (error) {
+                console.error('Error saving employee:', error);
+                showNotification(`Error saving employee: ${error.message}`, 'error');
             }
-        });
+        }
 
         // Manage departments with Google Sheets sync
         async function addDepartment() {
