@@ -540,7 +540,7 @@
     <div class="container">
         <div class="header">
             <h1>Advanced HR Management System</h1>
-            <p>Comprehensive and advanced employee data management with Google Sheets integration</p>
+            <p>Comprehensive employee data management with Google Sheets integration</p>
             <div id="syncStatus" class="sync-status sync-loading">🔄 Connecting to Google Sheets...</div>
         </div>
 
@@ -681,8 +681,8 @@
                         <input type="text" id="employeeName" required>
                     </div>
                     <div class="form-group">
-                        <label>Employee ID *</label>
-                        <input type="number" id="employeeId" required>
+                        <label>Employee ID</label>
+                        <input type="text" id="employeeId" placeholder="Auto-generated if empty">
                     </div>
                 </div>
                 
@@ -708,14 +708,12 @@
                 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Location *</label>
-                        <select id="employeeLocation" required>
-                            <option value="">Select Location</option>
-                        </select>
+                        <label>Location</label>
+                        <input type="text" id="employeeLocation" placeholder="Work location">
                     </div>
                     <div class="form-group">
-                        <label>Nationality *</label>
-                        <select id="employeeNationality" required>
+                        <label>Nationality</label>
+                        <select id="employeeNationality">
                             <option value="">Select Nationality</option>
                             <option value="Saudi">Saudi</option>
                             <option value="Non-Saudi">Non-Saudi</option>
@@ -780,7 +778,7 @@
             statusElement.textContent = message;
         }
 
-        // Load data from Google Sheets with CORS workaround
+        // Load data from Google Sheets with improved error handling
         async function loadFromGoogleSheets() {
             if (isSyncing) return;
             isSyncing = true;
@@ -788,70 +786,55 @@
             try {
                 updateSyncStatus('loading', '🔄 Loading data from Google Sheets...');
                 
-                // Try multiple approaches for CORS issues
-                let data = [];
-                let success = false;
+                const response = await fetch(sheetsUrl, {
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-cache',
+                    redirect: 'follow'
+                });
                 
-                // Method 1: Direct fetch with simple request
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const text = await response.text();
+                let data;
+                
                 try {
-                    const response = await fetch(sheetsUrl, {
-                        method: 'GET',
-                        mode: 'cors',
-                        cache: 'no-cache',
-                        headers: {
-                            'Content-Type': 'text/plain',
-                        },
-                        redirect: 'follow'
-                    });
-                    
-                    if (response.ok) {
-                        const text = await response.text();
-                        try {
-                            data = JSON.parse(text);
-                            success = true;
-                        } catch (parseError) {
-                            console.log('JSON parse error:', parseError);
-                        }
-                    }
-                } catch (fetchError) {
-                    console.log('Direct fetch failed:', fetchError);
-                }
-                
-                // Method 2: JSONP fallback
-                if (!success) {
-                    try {
-                        data = await loadWithJSONP(sheetsUrl);
-                        success = true;
-                    } catch (jsonpError) {
-                        console.log('JSONP failed:', jsonpError);
-                    }
-                }
-                
-                // Method 3: Proxy fallback (you can implement this if needed)
-                if (!success) {
-                    throw new Error('All loading methods failed. Please check the Google Apps Script deployment.');
+                    data = JSON.parse(text);
+                } catch (parseError) {
+                    console.log('JSON parse error:', parseError);
+                    throw new Error('Invalid response format from Google Sheets');
                 }
                 
                 if (Array.isArray(data) && data.length > 0) {
-                    // Convert Google Sheets data to our format
-                    employees = data.map(row => ({
-                        name: row.Name || row.name || '',
-                        id: parseInt(row.ID || row.id || row['Employee ID']) || Math.floor(Math.random() * 10000),
-                        email: row.Email || row.email || '',
-                        department: row.Department || row.department || '',
-                        jobTitle: row['Job Title'] || row[' Job title'] || row['Job title'] || row.jobTitle || '',
-                        location: row.Location || row.location || '',
-                        nationality: row.Nationality || row[' Nationality'] || row.nationality || '',
-                        status: (row.Status || row.status || 'active').toLowerCase(),
-                        startDate: row['Start Date'] || row.startDate || '',
-                        endDate: row['End Date'] || row.endDate || '',
-                        notes: row.Notes || row.Note || row.notes || ''
-                    })).filter(emp => emp.name);
+                    // Convert Google Sheets data to our format with better field mapping
+                    employees = data.map(row => {
+                        // Generate ID if missing
+                        let employeeId = row.ID || row.id || '';
+                        if (!employeeId || employeeId.trim() === '') {
+                            employeeId = Math.floor(Math.random() * 100000).toString();
+                        }
+
+                        return {
+                            name: row.Name || row.name || '',
+                            id: employeeId,
+                            email: row.Email || row.email || '',
+                            department: row.Department || row.department || '',
+                            jobTitle: row['Job Title'] || row['Job title'] || row.jobTitle || '',
+                            location: row.Location || row.location || '',
+                            nationality: row.Nationality || row.nationality || '',
+                            status: determineStatus(row),
+                            startDate: row['Start Date'] || row.startDate || '',
+                            endDate: row['End Date'] || row.endDate || '',
+                            notes: row.Notes || row.Note || row.notes || ''
+                        };
+                    }).filter(emp => emp.name && emp.name.trim() !== '');
 
                     // Extract unique values for dropdowns
-                    departments = [...new Set(employees.map(emp => emp.department))].filter(d => d);
-                    jobTitles = [...new Set(employees.map(emp => emp.jobTitle))].filter(j => j);
-                    locations = [...new Set(employees.map(emp => emp.location))].filter(l => l);
+                    departments = [...new Set(employees.map(emp => emp.department))].filter(d => d && d.trim() !== '');
+                    jobTitles = [...new Set(employees.map(emp => emp.jobTitle))].filter(j => j && j.trim() !== '');
+                    locations = [...new Set(employees.map(emp => emp.location))].filter(l => l && l.trim() !== '');
 
                     updateAllDropdowns();
                     updateSettingsLists();
@@ -873,39 +856,24 @@
             }
         }
 
-        // JSONP fallback for CORS issues
-        function loadWithJSONP(url) {
-            return new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                const callbackName = 'jsonp_callback_' + Math.round(100000 * Math.random());
-                
-                // Add callback parameter to URL
-                const separator = url.includes('?') ? '&' : '?';
-                script.src = url + separator + 'callback=' + callbackName;
-                
-                window[callbackName] = function(data) {
-                    document.head.removeChild(script);
-                    delete window[callbackName];
-                    resolve(data);
-                };
-                
-                script.onerror = function() {
-                    document.head.removeChild(script);
-                    delete window[callbackName];
-                    reject(new Error('JSONP request failed'));
-                };
-                
-                document.head.appendChild(script);
-                
-                // Timeout after 10 seconds
-                setTimeout(() => {
-                    if (window[callbackName]) {
-                        document.head.removeChild(script);
-                        delete window[callbackName];
-                        reject(new Error('JSONP request timeout'));
-                    }
-                }, 10000);
-            });
+        // Determine employee status (active/inactive) with better logic
+        function determineStatus(row) {
+            const status = (row.Status || row.status || '').toLowerCase();
+            
+            // If status is explicitly set, use it
+            if (status === 'active' || status === 'نشط') return 'active';
+            if (status === 'inactive' || status === 'غير نشط') return 'inactive';
+            
+            // If no explicit status, determine based on end date
+            const endDate = row['End Date'] || row.endDate || '';
+            if (endDate) {
+                const contractEndDate = new Date(endDate);
+                const today = new Date();
+                return contractEndDate >= today ? 'active' : 'inactive';
+            }
+            
+            // Default to active if no end date
+            return 'active';
         }
 
         // Save employee to Google Sheets using GET method (CORS workaround)
@@ -916,17 +884,17 @@
                 // Build query parameters for GET request
                 const params = new URLSearchParams({
                     action: isUpdate ? 'update' : 'add',
-                    name: employeeData.name,
-                    id: employeeData.id,
-                    email: employeeData.email,
-                    department: employeeData.department,
-                    jobTitle: employeeData.jobTitle,
-                    location: employeeData.location,
-                    nationality: employeeData.nationality,
-                    startDate: employeeData.startDate,
-                    endDate: employeeData.endDate,
-                    status: employeeData.status,
-                    notes: employeeData.notes
+                    name: employeeData.name || '',
+                    id: employeeData.id || '',
+                    email: employeeData.email || '',
+                    department: employeeData.department || '',
+                    jobTitle: employeeData.jobTitle || '',
+                    location: employeeData.location || '',
+                    nationality: employeeData.nationality || '',
+                    startDate: employeeData.startDate || '',
+                    endDate: employeeData.endDate || '',
+                    status: employeeData.status || 'active',
+                    notes: employeeData.notes || ''
                 });
 
                 const url = `${sheetsUrl}?${params.toString()}`;
@@ -1243,7 +1211,6 @@
         function updateAllDropdowns() {
             updateDropdown('employeeDepartment', departments);
             updateDropdown('employeeJobTitle', jobTitles);
-            updateDropdown('employeeLocation', locations);
         }
 
         // Update dropdown
@@ -1326,16 +1293,27 @@
                 charts.jobTitle = drawBarChart('jobTitleChart', jobTitleCounts);
             }
             
-            // Location chart
+            // Location chart - only show if locations exist
             const locationCounts = employees.reduce((acc, emp) => {
-                if (emp.location) {
+                if (emp.location && emp.location.trim() !== '') {
                     acc[emp.location] = (acc[emp.location] || 0) + 1;
                 }
                 return acc;
             }, {});
             
             if (document.getElementById('locationChart')) {
-                charts.location = drawDoughnutChart('locationChart', locationCounts);
+                if (Object.keys(locationCounts).length > 0) {
+                    charts.location = drawDoughnutChart('locationChart', locationCounts);
+                } else {
+                    // Show message if no location data
+                    const canvas = document.getElementById('locationChart');
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#718096';
+                    ctx.font = '16px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('No location data available', canvas.width/2, canvas.height/2);
+                }
             }
             
             // Status chart
@@ -1349,16 +1327,27 @@
                 charts.status = drawPieChart('statusChart', statusCounts);
             }
             
-            // Nationality chart
+            // Nationality chart - only show if nationality data exists
             const nationalityCounts = employees.reduce((acc, emp) => {
-                if (emp.nationality) {
+                if (emp.nationality && emp.nationality.trim() !== '') {
                     acc[emp.nationality] = (acc[emp.nationality] || 0) + 1;
                 }
                 return acc;
             }, {});
             
             if (document.getElementById('nationalityChart')) {
-                charts.nationality = drawDoughnutChart('nationalityChart', nationalityCounts);
+                if (Object.keys(nationalityCounts).length > 0) {
+                    charts.nationality = drawDoughnutChart('nationalityChart', nationalityCounts);
+                } else {
+                    // Show message if no nationality data
+                    const canvas = document.getElementById('nationalityChart');
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#718096';
+                    ctx.font = '16px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('No nationality data available', canvas.width/2, canvas.height/2);
+                }
             }
         }
 
@@ -1467,16 +1456,18 @@
                 
                 const nationalityBadge = emp.nationality === 'Saudi' ? 
                     '<span class="status-badge" style="background: #c6f6d5; color: #22543d;">Saudi</span>' : 
-                    '<span class="status-badge" style="background: #bee3f8; color: #2a4365;">Non-Saudi</span>';
+                    emp.nationality === 'Non-Saudi' ?
+                    '<span class="status-badge" style="background: #bee3f8; color: #2a4365;">Non-Saudi</span>' :
+                    '-';
                 
                 row.innerHTML = `
-                    <td>${emp.id}</td>
+                    <td>${emp.id || '-'}</td>
                     <td>${emp.name}</td>
                     <td>${emp.email || '-'}</td>
                     <td>${emp.department || '-'}</td>
                     <td>${emp.jobTitle || '-'}</td>
                     <td>${emp.location || '-'}</td>
-                    <td>${emp.nationality ? nationalityBadge : '-'}</td>
+                    <td>${nationalityBadge}</td>
                     <td>${emp.startDate ? formatDate(emp.startDate) : '-'}</td>
                     <td>${emp.endDate ? formatDate(emp.endDate) : '-'}</td>
                     <td>${statusBadge}</td>
@@ -1616,10 +1607,15 @@
                 return;
             }
             
+            // Generate ID if empty
+            let employeeId = document.getElementById('employeeId').value.trim();
+            if (!employeeId) {
+                employeeId = Math.floor(Math.random() * 100000).toString();
+            }
+            
             // Check for unique employee ID
-            const id = parseInt(document.getElementById('employeeId').value);
             const existingEmployee = employees.find((emp, index) => 
-                emp.id === id && index !== editingIndex
+                emp.id === employeeId && index !== editingIndex
             );
             
             if (existingEmployee) {
@@ -1629,11 +1625,11 @@
             
             const employee = {
                 name: document.getElementById('employeeName').value.trim(),
-                id: id,
+                id: employeeId,
                 email: document.getElementById('employeeEmail').value.trim(),
                 department: document.getElementById('employeeDepartment').value,
                 jobTitle: document.getElementById('employeeJobTitle').value,
-                location: document.getElementById('employeeLocation').value,
+                location: document.getElementById('employeeLocation').value.trim(),
                 nationality: document.getElementById('employeeNationality').value,
                 status: document.getElementById('employeeStatus').value,
                 startDate: document.getElementById('employeeStartDate').value,
@@ -1740,7 +1736,6 @@
             const newLocation = document.getElementById('newLocation').value.trim();
             if (newLocation && !locations.includes(newLocation)) {
                 locations.push(newLocation);
-                updateAllDropdowns();
                 updateSettingsLists();
                 document.getElementById('newLocation').value = '';
                 showNotification('Location added successfully!', 'success');
@@ -1754,7 +1749,6 @@
                 const index = locations.indexOf(location);
                 if (index > -1) {
                     locations.splice(index, 1);
-                    updateAllDropdowns();
                     updateSettingsLists();
                     showNotification('Location deleted successfully!', 'success');
                 }
@@ -1831,11 +1825,11 @@
                     // Convert data to required format
                     const importedEmployees = jsonData.map(row => ({
                         name: row.Name || row.name || '',
-                        id: parseInt(row.ID || row.id || row['Employee ID']) || Math.floor(Math.random() * 10000),
+                        id: (row.ID || row.id || row['Employee ID'] || Math.floor(Math.random() * 100000)).toString(),
                         email: row.Email || row.email || '',
                         department: row.Department || row.department || '',
                         jobTitle: row['Job Title'] || row['Job title'] || row.jobTitle || '',
-                        location: row.Location || row.location || row['Location Start'] || '',
+                        location: row.Location || row.location || '',
                         nationality: row.Nationality || row.nationality || '',
                         status: (row.Status || row.status || 'active').toLowerCase(),
                         startDate: row['Start Date'] || row.startDate || '',
@@ -2035,27 +2029,31 @@
             const titleDetails = document.getElementById('jobTitleDetails');
             if (titleDetails) titleDetails.innerHTML = jobTitleHtml;
 
-            // Location report
+            // Location report - only show if location data exists
             const locationCounts = employees.reduce((acc, emp) => {
-                if (emp.location) {
+                if (emp.location && emp.location.trim() !== '') {
                     acc[emp.location] = (acc[emp.location] || 0) + 1;
                 }
                 return acc;
             }, {});
             
             let locationHtml = '<div style="padding: 20px;">';
-            Object.entries(locationCounts).forEach(([location, count]) => {
-                const percentage = ((count / employees.length) * 100).toFixed(1);
-                locationHtml += `
-                    <div style="margin-bottom: 15px; padding: 15px; background: #f7fafc; border-radius: 8px; border-left: 4px solid #4299e1;">
-                        <div style="font-weight: 600; color: #4a5568; margin-bottom: 5px;">${location}</div>
-                        <div style="color: #718096;">
-                            <span style="font-size: 1.2rem; font-weight: 600; color: #4299e1;">${count}</span> employees 
-                            (${percentage}%)
+            if (Object.keys(locationCounts).length > 0) {
+                Object.entries(locationCounts).forEach(([location, count]) => {
+                    const percentage = ((count / employees.length) * 100).toFixed(1);
+                    locationHtml += `
+                        <div style="margin-bottom: 15px; padding: 15px; background: #f7fafc; border-radius: 8px; border-left: 4px solid #4299e1;">
+                            <div style="font-weight: 600; color: #4a5568; margin-bottom: 5px;">${location}</div>
+                            <div style="color: #718096;">
+                                <span style="font-size: 1.2rem; font-weight: 600; color: #4299e1;">${count}</span> employees 
+                                (${percentage}%)
+                            </div>
                         </div>
-                    </div>
-                `;
-            });
+                    `;
+                });
+            } else {
+                locationHtml += '<p style="color: #718096; text-align: center;">No location data available</p>';
+            }
             locationHtml += '</div>';
             
             const locDetails = document.getElementById('locationDetails');
@@ -2189,41 +2187,6 @@
             }
         });
 
-        // Mobile optimizations
-        if (window.innerWidth <= 768) {
-            const style = document.createElement('style');
-            style.textContent = `
-                @media (max-width: 768px) {
-                    .data-table table {
-                        display: block;
-                        overflow-x: auto;
-                        white-space: nowrap;
-                    }
-                    
-                    .data-table th, .data-table td {
-                        min-width: 100px;
-                        padding: 8px 4px;
-                    }
-                    
-                    .btn {
-                        padding: 6px 12px;
-                        font-size: 0.8rem;
-                    }
-                    
-                    .action-buttons {
-                        flex-direction: column;
-                        align-items: stretch;
-                    }
-                    
-                    .action-btn {
-                        width: 100%;
-                        justify-content: center;
-                    }
-                }
-            `;
-            document.head.appendChild(style);
-        }
-
         // Initialize contract expiry check after data loads
         setTimeout(() => {
             if (employees.length > 0) {
@@ -2231,112 +2194,8 @@
             }
         }, 3000);
 
-        // Utility functions
-        function clearAllData() {
-            if (confirm('Are you sure you want to clear all local data? This will not affect Google Sheets.')) {
-                employees = [];
-                departments = [];
-                jobTitles = [];
-                locations = [];
-                updateInterface();
-                updateAllDropdowns();
-                updateSettingsLists();
-                showNotification('Local data cleared successfully!', 'success');
-            }
-        }
-
-        // Data validation function
-        function validateEmployeeData(employee) {
-            const errors = [];
-            
-            if (!employee.name || employee.name.trim() === '') {
-                errors.push('Name is required');
-            }
-            
-            if (!employee.id || isNaN(employee.id)) {
-                errors.push('Valid Employee ID is required');
-            }
-            
-            if (!employee.department) {
-                errors.push('Department is required');
-            }
-            
-            if (!employee.jobTitle) {
-                errors.push('Job Title is required');
-            }
-            
-            if (!employee.location) {
-                errors.push('Location is required');
-            }
-            
-            return errors;
-        }
-
-        // Print functionality
-        function printEmployeeList() {
-            const printWindow = window.open('', '_blank');
-            const printContent = `
-                <html>
-                <head>
-                    <title>Employee Directory</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; margin: 20px; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                        th { background-color: #f2f2f2; font-weight: bold; }
-                        .header { text-align: center; margin-bottom: 30px; }
-                        .stats { margin-bottom: 20px; }
-                    </style>
-                </head>
-                <body>
-                    <div class="header">
-                        <h1>Employee Directory</h1>
-                        <p>Generated on ${new Date().toLocaleDateString()}</p>
-                        <p>Synced with Google Sheets</p>
-                    </div>
-                    <div class="stats">
-                        <p><strong>Total Employees:</strong> ${employees.length}</p>
-                        <p><strong>Active Employees:</strong> ${employees.filter(emp => emp.status === 'active').length}</p>
-                        <p><strong>Saudi Employees:</strong> ${employees.filter(emp => emp.nationality === 'Saudi').length}</p>
-                        <p><strong>Non-Saudi Employees:</strong> ${employees.filter(emp => emp.nationality === 'Non-Saudi').length}</p>
-                    </div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Name</th>
-                                <th>Department</th>
-                                <th>Job Title</th>
-                                <th>Location</th>
-                                <th>Nationality</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${employees.map(emp => `
-                                <tr>
-                                    <td>${emp.id}</td>
-                                    <td>${emp.name}</td>
-                                    <td>${emp.department}</td>
-                                    <td>${emp.jobTitle}</td>
-                                    <td>${emp.location}</td>
-                                    <td>${emp.nationality}</td>
-                                    <td>${emp.status}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </body>
-                </html>
-            `;
-            
-            printWindow.document.write(printContent);
-            printWindow.document.close();
-            printWindow.print();
-        }
-
         console.log('HR Management System with Google Sheets integration initialized successfully');
-        console.log('Available functions: syncWithSheets(), clearAllData(), printEmployeeList()');
+        console.log('Available functions: syncWithSheets(), showAddForm(), exportToExcel()');
         console.log('Keyboard shortcuts: Ctrl+N (Add), Ctrl+E (Export), Ctrl+R (Sync), Ctrl+S (Save)');
     </script>
 </body>
