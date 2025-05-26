@@ -586,8 +586,20 @@
         </div>
 
         <!-- Settings Tab -->
+        <!-- Settings Tab -->
         <div id="settings" class="tab-content">
-            <div class="settings-card">
+            <div class="settings-grid">
+                <div class="settings-card">
+                    <h3 class="settings-title">Google Sheets Integration</h3>
+                    <div class="form-group">
+                        <label>Sheet URL:</label>
+                        <input type="text" id="sheetUrl" placeholder="Google Apps Script URL" value="https://script.google.com/macros/s/AKfycbzssMRrZCJfV0Pknrs5h-WdzSCeXkzZphWDP3XV6Au3ngeaxq50V8AKXwDVs-aJvWgG4w/exec">
+                        <button class="btn btn-primary" onclick="updateSheetUrl()" style="margin-top: 10px;">Update URL</button>
+                        <button class="btn btn-info" onclick="syncWithSheets()" style="margin-top: 10px;">🔄 Sync Now</button>
+                    </div>
+                </div>
+
+                <div class="settings-card">
                     <h3 class="settings-title">Dynamic Fields Management</h3>
                     <p style="color: #718096; margin-bottom: 15px;">Add custom fields that will appear in employee forms and tables</p>
                     
@@ -1594,13 +1606,24 @@
 
             // Update settings lists
             updateSettingsLists();
+            updateDynamicFieldsList();
         }
 
+        // Show data content
         // Show data content
         function showDataContent() {
             // Dashboard content
             const activeEmployees = employees.filter(emp => emp.status === 'active').length;
             const inactiveEmployees = employees.length - activeEmployees;
+            const saudiEmployees = employees.filter(emp => emp.nationality === 'Saudi').length;
+            const nonSaudiEmployees = employees.filter(emp => emp.nationality === 'Non-Saudi').length;
+            const employeesWithEndDates = employees.filter(emp => emp.endDate && emp.status === 'active');
+            const contractsEndingSoon = employeesWithEndDates.filter(emp => {
+                const endDate = new Date(emp.endDate);
+                const today = new Date();
+                const daysLeft = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+                return daysLeft > 0 && daysLeft <= 90;
+            }).length;
             
             document.getElementById('dashboardContent').innerHTML = `
                 <div class="dashboard-grid">
@@ -1613,12 +1636,28 @@
                         <div class="stat-label">Active Employees</div>
                     </div>
                     <div class="stat-card">
+                        <div class="stat-number">${inactiveEmployees}</div>
+                        <div class="stat-label">Inactive Employees</div>
+                    </div>
+                    <div class="stat-card">
                         <div class="stat-number">${departments.length}</div>
                         <div class="stat-label">Departments</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number">${inactiveEmployees}</div>
-                        <div class="stat-label">Inactive Employees</div>
+                        <div class="stat-number">${saudiEmployees}</div>
+                        <div class="stat-label">Saudi Employees</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${nonSaudiEmployees}</div>
+                        <div class="stat-label">Non-Saudi Employees</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${jobTitles.length}</div>
+                        <div class="stat-label">Job Titles</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${contractsEndingSoon}</div>
+                        <div class="stat-label">Contracts Ending Soon</div>
                     </div>
                 </div>
                 
@@ -1630,6 +1669,14 @@
                     <div class="chart-container">
                         <div class="chart-title">Employees by Job Title</div>
                         <canvas id="jobTitleChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <div class="chart-title">Nationality Distribution</div>
+                        <canvas id="nationalityDashChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <div class="chart-title">Employment Status</div>
+                        <canvas id="statusDashChart"></canvas>
                     </div>
                 </div>
             `;
@@ -1715,7 +1762,72 @@
                     }
                 });
             }
+            }
+            
+            // إضافة رسم بياني للجنسية في الداشبورد
+            const nationalityDashCtx = document.getElementById('nationalityDashChart');
+            if (nationalityDashCtx) {
+                const nationalityData = {};
+                employees.forEach(emp => {
+                    const nationality = emp.nationality || 'Not Specified';
+                    nationalityData[nationality] = (nationalityData[nationality] || 0) + 1;
+                });
+                
+                if (charts.nationalityDash) {
+                    charts.nationalityDash.destroy();
+                }
+                
+                charts.nationalityDash = new Chart(nationalityDashCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(nationalityData),
+                        datasets: [{
+                            data: Object.values(nationalityData),
+                            backgroundColor: ['#48bb78', '#ed8936', '#4299e1', '#9f7aea']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                position: 'right'
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // إضافة رسم بياني للحالة في الداشبورد
+            const statusDashCtx = document.getElementById('statusDashChart');
+            if (statusDashCtx) {
+                const activeCount = employees.filter(emp => emp.status === 'active').length;
+                const inactiveCount = employees.length - activeCount;
+                
+                if (charts.statusDash) {
+                    charts.statusDash.destroy();
+                }
+                
+                charts.statusDash = new Chart(statusDashCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Active', 'Inactive'],
+                        datasets: [{
+                            data: [activeCount, inactiveCount],
+                            backgroundColor: ['#48bb78', '#f56565']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                position: 'right'
+                            }
+                        }
+                    }
+                });
+            }
         }
+        
 
         // Load employee table
         function loadEmployeeTable() {
@@ -1813,6 +1925,7 @@
                 });
                 
                 tableBody.appendChild(row);
+              }
             });
         }
         // Filter employees
