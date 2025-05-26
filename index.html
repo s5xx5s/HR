@@ -1417,11 +1417,20 @@
                     }
                 }
 
-                if (result && result.success) {
+                console.log('Response result:', result);
+                
+                if (result && (result.success === true || result.success === 'true')) {
                     updateSyncStatus('success', '✅ Saved to Google Sheets');
+                    console.log('Save operation successful');
+                    return true;
+                } else if (result && result.message && result.message.includes('بنجاح')) {
+                    // التحقق من الرسائل العربية
+                    updateSyncStatus('success', '✅ Saved to Google Sheets');
+                    console.log('Save operation successful (Arabic response)');
                     return true;
                 } else {
-                    throw new Error(result.error || 'Failed to save data');
+                    console.error('Save operation failed:', result);
+                    throw new Error(result?.error || result?.message || 'Failed to save data');
                 }
                 
             } catch (error) {
