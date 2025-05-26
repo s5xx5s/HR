@@ -541,7 +541,7 @@
         <div class="header">
             <h1>Advanced HR Management System</h1>
             <p>Comprehensive employee data management with Google Sheets integration</p>
-            <div id="syncStatus" class="sync-status sync-loading">🔄 Connecting to Google Sheets...</div>
+            <div id="syncStatus" class="sync-status sync-loading">🔄 Ready to connect...</div>
         </div>
 
         <div class="nav-tabs">
@@ -551,14 +551,14 @@
             <button class="nav-tab" onclick="showTab('settings')">Settings</button>
             <button class="nav-tab" onclick="showTab('import-export')">Import/Export</button>
         </div>
-
-        <!-- Dashboard Tab -->
+    <!-- الجزء الثاني -->
+<!-- Dashboard Tab -->
         <div id="dashboard" class="tab-content active">
             <div id="dashboardContent">
                 <div class="empty-state">
                     <div class="empty-state-icon">📊</div>
-                    <h3>Loading data from Google Sheets...</h3>
-                    <p>Please wait while we sync your employee data</p>
+                    <h3>Welcome to HR Management System</h3>
+                    <p>Connect to Google Sheets or add employees manually to get started</p>
                 </div>
             </div>
         </div>
@@ -568,8 +568,8 @@
             <div id="employeesContent">
                 <div class="empty-state">
                     <div class="empty-state-icon">👥</div>
-                    <h3>Loading employees...</h3>
-                    <p>Syncing with Google Sheets</p>
+                    <h3>No Employees Found</h3>
+                    <p>Add your first employee or sync with Google Sheets</p>
                 </div>
             </div>
         </div>
@@ -580,7 +580,7 @@
                 <div class="empty-state">
                     <div class="empty-state-icon">📈</div>
                     <h3>No Data for Reports</h3>
-                    <p>Reports will be available once data is loaded</p>
+                    <p>Reports will be available once you add employee data</p>
                 </div>
             </div>
         </div>
@@ -593,6 +593,9 @@
                     <div class="form-group">
                         <label>Sheet URL:</label>
                         <input type="text" id="sheetUrl" placeholder="Google Apps Script URL" value="https://script.google.com/macros/s/AKfycbzssMRrZCJfV0Pknrs5h-WdzSCeXkzZphWDP3XV6Au3ngeaxq50V8AKXwDVs-aJvWgG4w/exec">
+                        <small style="color: #718096; font-size: 0.9rem; margin-top: 5px; display: block;">
+                            Enter your Google Apps Script Web App URL here
+                        </small>
                         <button class="btn btn-primary" onclick="updateSheetUrl()" style="margin-top: 10px;">Update URL</button>
                         <button class="btn btn-info" onclick="syncWithSheets()" style="margin-top: 10px;">🔄 Sync Now</button>
                     </div>
@@ -674,7 +677,7 @@
     <div class="form-overlay" id="employeeForm">
         <div class="form-modal">
             <h2 id="formTitle">Add New Employee</h2>
-            <form id="employeeFormData">
+            <form id="employeeFormData" onsubmit="handleFormSubmit(event)">
                 <div class="form-row">
                     <div class="form-group">
                         <label>Name *</label>
@@ -753,32 +756,581 @@
             </form>
         </div>
     </div>
-
-    <script>
-        // Core data
+    <!-- الجزء الثالث -->
+<script>
+        // ===============================
+        // المتغيرات الأساسية
+        // ===============================
         let employees = [];
         let departments = [];
         let jobTitles = [];
         let locations = [];
         let editingIndex = -1;
         let charts = {};
-        let sheetsUrl = 'https://script.google.com/macros/s/AKfycbzssMRrZCJfV0Pknrs5h-WdzSCeXkzZphWDP3XV6Au3ngeaxq50V8AKXwDVs-aJvWgG4w/exec';
         let isSyncing = false;
-
-        // Initialize application
+        
+        // إعدادات Google Sheets
+        let sheetsUrl = ''; // سيتم تهيئته بواسطة النظام الجديد
+        // ===============================
+        // تهيئة النظام
+        // ===============================
         document.addEventListener('DOMContentLoaded', function() {
-            updateSyncStatus('loading', '🔄 Connecting to Google Sheets...');
-            loadFromGoogleSheets();
+            // تحديث رابط Google Sheets من localStorage
+            if (localStorage.getItem('sheetsUrl')) {
+                document.getElementById('sheetUrl').value = localStorage.getItem('sheetsUrl');
+            }
+            
+            updateSyncStatus('loading', '🔄 Ready to connect to Google Sheets...');
+            updateInterface();
         });
 
-        // Update sync status
+        // ===============================
+        // دوال المساعدة
+        // ===============================
+        
+        // تحويل آمن للنصوص
+        function safeString(value) {
+            if (value === null || value === undefined) return '';
+            return String(value).trim();
+        }
+
+        // الحصول الآمن على خصائص الكائنات
+        function safeGet(obj, ...keys) {
+            for (const key of keys) {
+                if (obj && obj.hasOwnProperty(key)) {
+                    return obj[key];
+                }
+            }
+            return '';
+        }
+
+        // تحديث حالة المزامنة
         function updateSyncStatus(type, message) {
             const statusElement = document.getElementById('syncStatus');
             statusElement.className = `sync-status sync-${type}`;
             statusElement.textContent = message;
         }
 
-        // Load data from Google Sheets with improved error handling and fallback methods
+        // عرض الإشعارات
+        function showNotification(message, type = 'success') {
+            // إزالة الإشعارات الموجودة
+            const existing = document.querySelectorAll('.notification');
+            existing.forEach(notif => notif.remove());
+            
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            // إزالة الإشعار بعد 4 ثوان
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                notification.style.transform = 'translateX(100%)';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }, 4000);
+        }
+
+        // تحديد حالة الموظف
+        function determineStatus(row) {
+            try {
+                const status = safeString(safeGet(row, 'Status', 'status')).toLowerCase();
+                
+                if (status === 'active' || status === 'نشط') return 'active';
+                if (status === 'inactive' || status === 'غير نشط') return 'inactive';
+                
+                const endDate = safeString(safeGet(row, 'End Date', 'endDate'));
+                if (endDate) {
+                    try {
+                        const contractEndDate = new Date(endDate);
+                        const today = new Date();
+                        return contractEndDate >= today ? 'active' : 'inactive';
+                    } catch (dateError) {
+                        console.log('Invalid date format:', endDate);
+                    }
+                }
+                
+                return 'active';
+            } catch (error) {
+                console.error('Error determining status:', error);
+                return 'active';
+            }
+        }
+
+        // تنسيق التاريخ
+        function formatDate(dateString) {
+            if (!dateString) return '-';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US');
+        }
+
+        // التحقق من صحة التواريخ
+        function validateDates() {
+            const startDate = document.getElementById('employeeStartDate').value;
+            const endDate = document.getElementById('employeeEndDate').value;
+            
+            if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+                showNotification('Start date cannot be after end date!', 'error');
+                return false;
+            }
+            return true;
+        }
+
+        // ===============================
+        // إدارة التبويبات
+        // ===============================
+        function showTab(tabName) {
+            // إخفاء جميع التبويبات
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // عرض التبويب المحدد
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+            
+            updateInterface();
+        }
+
+        // ===============================
+        // تحديث الواجهة
+        // ===============================
+        function updateInterface() {
+            if (employees.length === 0) {
+                showEmptyStates();
+            } else {
+                showDataContent();
+                updateDashboard();
+                loadEmployeeTable();
+                loadReports();
+            }
+        }
+
+        // عرض الحالات الفارغة
+        function showEmptyStates() {
+            document.getElementById('dashboardContent').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📊</div>
+                    <h3>Welcome to HR Management System</h3>
+                    <p>Start by adding employees manually or sync with Google Sheets</p>
+                    <div class="action-buttons" style="justify-content: center;">
+                        <button class="action-btn btn-success" onclick="showAddForm()">
+                            ➕ Add First Employee
+                        </button>
+                        <button class="action-btn btn-info" onclick="syncWithSheets()">
+                            🔄 Sync with Google Sheets
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('employeesContent').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">👥</div>
+                    <h3>No Employees Found</h3>
+                    <p>Add your first employee or sync with Google Sheets</p>
+                    <div class="action-buttons" style="justify-content: center;">
+                        <button class="action-btn btn-success" onclick="showAddForm()">
+                            ➕ Add Employee
+                        </button>
+                        <button class="action-btn btn-info" onclick="syncWithSheets()">
+                            🔄 Sync with Google Sheets
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('reportsContent').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📈</div>
+                    <h3>No Data for Reports</h3>
+                    <p>Reports will be available once you add employee data</p>
+                </div>
+            `;
+        }
+
+        // ===============================
+        // تحديث القوائم المنسدلة
+        // ===============================
+        function updateAllDropdowns() {
+            updateDropdown('employeeDepartment', departments);
+            updateDropdown('employeeJobTitle', jobTitles);
+        }
+
+        function updateDropdown(selectId, options) {
+            const select = document.getElementById(selectId);
+            if (!select) return;
+            
+            const currentValue = select.value;
+            
+            // الاحتفاظ بالخيار الأول
+            const firstOption = select.querySelector('option[value=""]');
+            select.innerHTML = '';
+            if (firstOption) {
+                select.appendChild(firstOption);
+            }
+            
+            // إضافة الخيارات الجديدة
+            options.forEach(option => {
+                const optionElement = document.createElement('option');
+                optionElement.value = option;
+                optionElement.textContent = option;
+                select.appendChild(optionElement);
+            });
+            
+            select.value = currentValue;
+        }
+
+        // ===============================
+        // إدارة النماذج
+        // ===============================
+        
+        // إخفاء النموذج
+        function hideForm() {
+            document.getElementById('employeeForm').style.display = 'none';
+        }
+
+        // معالجة إرسال النموذج (منع إعادة تحديث الصفحة)
+        function handleFormSubmit(event) {
+            event.preventDefault();
+            saveEmployee();
+            return false;
+        }
+
+        // تحديث حالة الموظف بناءً على تاريخ الانتهاء
+        function updateEmployeeStatus() {
+            const endDate = document.getElementById('employeeEndDate').value;
+            const statusSelect = document.getElementById('employeeStatus');
+            
+            if (endDate) {
+                const today = new Date();
+                const contractEndDate = new Date(endDate);
+                
+                if (contractEndDate < today) {
+                    statusSelect.value = 'inactive';
+                    showNotification('Status automatically set to Inactive (contract expired)', 'warning');
+                } else {
+                    statusSelect.value = 'active';
+                }
+            }
+        }
+
+        // إغلاق النموذج عند النقر خارجه
+        document.getElementById('employeeForm').addEventListener('click', function(e) {
+            if (e.target === this) {
+                hideForm();
+            }
+        });
+
+        // ===============================
+        // اختصارات لوحة المفاتيح
+        // ===============================
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                hideForm();
+            }
+            
+            if (e.ctrlKey && e.key === 'n') {
+                e.preventDefault();
+                showAddForm();
+            }
+            
+            if (e.ctrlKey && e.key === 'e') {
+                e.preventDefault();
+                exportToExcel();
+            }
+            
+            if (e.ctrlKey && e.key === 'r') {
+                e.preventDefault();
+                syncWithSheets();
+            }
+            
+            if (e.ctrlKey && e.key === 's') {
+                e.preventDefault();
+                const form = document.getElementById('employeeFormData');
+                if (form && document.getElementById('employeeForm').style.display === 'flex') {
+                    handleFormSubmit(new Event('submit'));
+                }
+            }
+        });
+
+        console.log('✅ HR Management System - Core Functions Loaded');
+        console.log('📋 Available shortcuts: Ctrl+N (Add), Ctrl+E (Export), Ctrl+R (Sync), Ctrl+S (Save)');
+    </script>
+
+    <!-- الجزء الرابع -->
+// ===============================
+        // Google Sheets Integration - Updated Version
+        // ===============================
+
+        // إعدادات النظام الافتراضية
+        const SYSTEM_CONFIG = {
+            // رابط Google Sheets الافتراضي (يمكن تغييره ديناميكياً)
+            defaultSheetsUrl: 'https://script.google.com/macros/s/AKfycbzssMRrZCJfV0Pknrs5h-WdzSCeXkzZphWDP3XV6Au3ngeaxq50V8AKXwDVs-aJvWgG4w/exec',
+            
+            // مفتاح تخزين الرابط الافتراضي الجديد
+            defaultUrlKey: 'hr_system_default_url',
+            
+            // مفتاح تخزين رابط المستخدم الشخصي
+            userUrlKey: 'hr_system_user_url'
+        };
+
+        // تهيئة النظام
+        function initializeUrlSystem() {
+            // 1. تحقق من وجود رابط افتراضي محدث من مستخدم سابق
+            const savedDefaultUrl = localStorage.getItem(SYSTEM_CONFIG.defaultUrlKey);
+            
+            // 2. تحقق من وجود رابط شخصي للمستخدم الحالي
+            const userUrl = localStorage.getItem(SYSTEM_CONFIG.userUrlKey);
+            
+            // 3. تحديد الرابط المناسب
+            let finalUrl = SYSTEM_CONFIG.defaultSheetsUrl; // الرابط الأصلي
+            
+            if (savedDefaultUrl) {
+                finalUrl = savedDefaultUrl; // رابط افتراضي محدث
+                console.log('🔗 Using updated default URL:', savedDefaultUrl);
+            }
+            
+            if (userUrl) {
+                finalUrl = userUrl; // رابط المستخدم الشخصي (أولوية عالية)
+                console.log('👤 Using personal URL:', userUrl);
+            }
+            
+            // 4. تطبيق الرابط
+            sheetsUrl = finalUrl;
+            document.getElementById('sheetUrl').value = finalUrl;
+            
+            // 5. تحديث واجهة المستخدم
+            updateUrlStatusDisplay();
+        }
+
+        // تحديث رابط Google Sheets مع خيارات التحديث
+        function updateSheetUrl() {
+            const newUrl = safeString(document.getElementById('sheetUrl').value);
+            if (!newUrl) {
+                showNotification('Please enter a valid Google Sheets URL!', 'error');
+                return;
+            }
+
+            // التحقق من صحة الرابط
+            if (!newUrl.includes('script.google.com') || !newUrl.includes('/exec')) {
+                showNotification('Please enter a valid Google Apps Script URL!', 'error');
+                return;
+            }
+
+            // عرض خيارات الحفظ
+            showSaveOptions(newUrl);
+        }
+
+        // عرض خيارات حفظ الرابط
+        function showSaveOptions(newUrl) {
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.7);
+                z-index: 10000;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                padding: 20px;
+            `;
+            
+            modal.innerHTML = `
+                <div style="
+                    background: white;
+                    border-radius: 15px;
+                    padding: 30px;
+                    max-width: 600px;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                ">
+                    <h2 style="margin-bottom: 20px; color: #4a5568;">🔗 Update Google Sheets URL</h2>
+                    
+                    <div style="background: #f7fafc; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <strong>New URL:</strong><br>
+                        <code style="word-break: break-all; font-size: 0.9rem; color: #667eea;">${newUrl}</code>
+                    </div>
+                    
+                    <p style="margin-bottom: 20px; color: #718096;">
+                        How would you like to save this URL?
+                    </p>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 25px;">
+                        <button onclick="saveAsPersonal('${newUrl}')" style="
+                            background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+                            color: white;
+                            padding: 15px 20px;
+                            border: none;
+                            border-radius: 8px;
+                            cursor: pointer;
+                            font-weight: 600;
+                            text-align: left;
+                        ">
+                            <strong>👤 Save for Me Only</strong><br>
+                            <small style="opacity: 0.9;">This URL will be used only when you visit the site</small>
+                        </button>
+                        
+                        <button onclick="saveAsDefault('${newUrl}')" style="
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            padding: 15px 20px;
+                            border: none;
+                            border-radius: 8px;
+                            cursor: pointer;
+                            font-weight: 600;
+                            text-align: left;
+                        ">
+                            <strong>🌐 Set as Default for Everyone</strong><br>
+                            <small style="opacity: 0.9;">This URL will become the default for all future users</small>
+                        </button>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                        <button onclick="closeSaveModal()" style="
+                            background: #e2e8f0;
+                            color: #4a5568;
+                            padding: 12px 24px;
+                            border: none;
+                            border-radius: 8px;
+                            cursor: pointer;
+                            font-weight: 600;
+                        ">Cancel</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+
+        // حفظ كرابط شخصي
+        function saveAsPersonal(url) {
+            localStorage.setItem(SYSTEM_CONFIG.userUrlKey, url);
+            sheetsUrl = url;
+            closeSaveModal();
+            updateUrlStatusDisplay();
+            showNotification('URL saved as your personal link!', 'success');
+            syncWithSheets();
+        }
+
+        // حفظ كرابط افتراضي جديد للجميع
+        function saveAsDefault(url) {
+            // حفظ كرابط افتراضي جديد
+            localStorage.setItem(SYSTEM_CONFIG.defaultUrlKey, url);
+            
+            // حفظ أيضاً كرابط شخصي
+            localStorage.setItem(SYSTEM_CONFIG.userUrlKey, url);
+            
+            sheetsUrl = url;
+            closeSaveModal();
+            updateUrlStatusDisplay();
+            
+            showNotification('URL set as default for all users!', 'success');
+            
+            // إشعار إضافي
+            setTimeout(() => {
+                showNotification('New visitors will now use this URL automatically', 'info');
+            }, 2000);
+            
+            syncWithSheets();
+        }
+
+        // تحديث عرض حالة الرابط
+        function updateUrlStatusDisplay() {
+            const currentUrl = document.getElementById('sheetUrl').value;
+            const savedDefaultUrl = localStorage.getItem(SYSTEM_CONFIG.defaultUrlKey);
+            const userUrl = localStorage.getItem(SYSTEM_CONFIG.userUrlKey);
+            
+            let status = '';
+            let statusColor = '#718096';
+            
+            if (userUrl && currentUrl === userUrl) {
+                if (savedDefaultUrl && userUrl === savedDefaultUrl) {
+                    status = '🌐 Default URL (set by you)';
+                    statusColor = '#667eea';
+                } else {
+                    status = '👤 Your personal URL';
+                    statusColor = '#4299e1';
+                }
+            } else if (savedDefaultUrl && currentUrl === savedDefaultUrl) {
+                status = '🌐 Default URL (set by another user)';
+                statusColor = '#48bb78';
+            } else {
+                status = '📝 Original system URL';
+                statusColor = '#718096';
+            }
+            
+            // تحديث عرض الحالة
+            const statusDisplay = document.getElementById('urlStatusDisplay');
+            if (statusDisplay) {
+                statusDisplay.innerHTML = status;
+                statusDisplay.style.color = statusColor;
+            }
+        }
+
+        // إضافة عرض الحالة إلى الواجهة
+        function addUrlStatusToInterface() {
+            const sheetUrlInput = document.getElementById('sheetUrl');
+            if (sheetUrlInput && !document.getElementById('urlStatusDisplay')) {
+                const statusDiv = document.createElement('div');
+                statusDiv.style.cssText = 'margin-top: 10px; padding: 8px 12px; background: #f7fafc; border-radius: 6px; font-size: 0.9rem;';
+                statusDiv.innerHTML = '<strong>Status:</strong> <span id="urlStatusDisplay">Loading...</span>';
+                sheetUrlInput.parentNode.appendChild(statusDiv);
+            }
+        }
+
+        // إعادة تعيين إلى الرابط الأصلي
+        function resetToOriginalUrl() {
+            if (confirm('Reset to the original system URL? This will remove any custom URLs.')) {
+                localStorage.removeItem(SYSTEM_CONFIG.defaultUrlKey);
+                localStorage.removeItem(SYSTEM_CONFIG.userUrlKey);
+                
+                sheetsUrl = SYSTEM_CONFIG.defaultSheetsUrl;
+                document.getElementById('sheetUrl').value = SYSTEM_CONFIG.defaultSheetsUrl;
+                
+                updateUrlStatusDisplay();
+                showNotification('Reset to original URL successfully!', 'success');
+            }
+        }
+
+        // إضافة زر إعادة التعيين
+        function addResetButton() {
+            const updateButton = document.querySelector('button[onclick="updateSheetUrl()"]');
+            if (updateButton && !document.getElementById('resetUrlButton')) {
+                const resetButton = document.createElement('button');
+                resetButton.id = 'resetUrlButton';
+                resetButton.className = 'btn btn-info';
+                resetButton.style.marginTop = '10px';
+                resetButton.style.marginLeft = '10px';
+                resetButton.onclick = resetToOriginalUrl;
+                resetButton.innerHTML = '🔄 Reset to Original';
+                updateButton.parentNode.appendChild(resetButton);
+            }
+        }
+
+        // إغلاق نافذة الحفظ
+        function closeSaveModal() {
+            const modal = document.querySelector('div[style*="position: fixed"][style*="z-index: 10000"]');
+            if (modal) {
+                document.body.removeChild(modal);
+            }
+        }
+
+        // مزامنة مع Google Sheets
+        async function syncWithSheets() {
+            await loadFromGoogleSheets();
+        }
+
+        // تحميل البيانات من Google Sheets
         async function loadFromGoogleSheets() {
             if (isSyncing) return;
             isSyncing = true;
@@ -789,7 +1341,7 @@
                 let data = null;
                 let method = 'unknown';
                 
-                // Method 1: Try direct fetch first
+                // طريقة 1: محاولة الاتصال المباشر
                 try {
                     const response = await fetch(sheetsUrl, {
                         method: 'GET',
@@ -814,7 +1366,7 @@
                     console.log('Direct fetch failed:', fetchError.message);
                 }
                 
-                // Method 2: Try JSONP if direct fetch failed
+                // طريقة 2: استخدام JSONP كحل بديل
                 if (!data) {
                     try {
                         console.log('Trying JSONP fallback...');
@@ -831,39 +1383,30 @@
                 }
                 
                 if (Array.isArray(data) && data.length > 0) {
-                    // Convert Google Sheets data to our format with better field mapping
+                    // تنظيف البيانات المستلمة من Google Sheets
                     employees = data.map(row => {
-                        // Generate ID if missing - handle all data types safely
-                        let employeeId = row.ID || row.id || '';
+                        let employeeId = safeString(row.ID || row.id || '');
                         
-                        // Convert to string and handle null/undefined/numbers safely
-                        if (employeeId === null || employeeId === undefined) {
-                            employeeId = '';
-                        } else {
-                            employeeId = String(employeeId).trim();
-                        }
-                        
-                        // If still empty after conversion, generate new ID
                         if (!employeeId || employeeId === '') {
                             employeeId = Math.floor(Math.random() * 100000).toString();
                         }
 
                         return {
-                            name: String(row.Name || row.name || '').trim(),
+                            name: safeString(row.Name || row.name || ''),
                             id: employeeId,
-                            email: String(row.Email || row.email || '').trim(),
-                            department: String(row.Department || row.department || '').trim(),
-                            jobTitle: String(row['Job Title'] || row['Job title'] || row.jobTitle || '').trim(),
-                            location: String(row.Location || row.location || '').trim(),
-                            nationality: String(row.Nationality || row.nationality || '').trim(),
+                            email: safeString(row.Email || row.email || ''),
+                            department: safeString(row.Department || row.department || ''),
+                            jobTitle: safeString(row['Job Title'] || row['Job title'] || row.jobTitle || ''),
+                            location: safeString(row.Location || row.location || ''),
+                            nationality: safeString(row.Nationality || row.nationality || ''),
                             status: determineStatus(row),
-                            startDate: String(row['Start Date'] || row.startDate || '').trim(),
-                            endDate: String(row['End Date'] || row.endDate || '').trim(),
-                            notes: String(row.Notes || row.Note || row.notes || '').trim()
+                            startDate: safeString(row['Start Date'] || row.startDate || ''),
+                            endDate: safeString(row['End Date'] || row.endDate || ''),
+                            notes: safeString(row.Notes || row.Note || row.notes || '')
                         };
                     }).filter(emp => emp.name && emp.name !== '');
 
-                    // Extract unique values for dropdowns - safely handle all data types
+                    // استخراج القيم الفريدة للقوائم المنسدلة
                     departments = [...new Set(employees.map(emp => emp.department))].filter(d => d && d !== '');
                     jobTitles = [...new Set(employees.map(emp => emp.jobTitle))].filter(j => j && j !== '');
                     locations = [...new Set(employees.map(emp => emp.location))].filter(l => l && l !== '');
@@ -876,25 +1419,24 @@
                     showNotification(`Loaded ${employees.length} employees from Google Sheets using ${method}`, 'success');
                 } else {
                     updateSyncStatus('error', '⚠️ No data found in Google Sheets');
-                    updateInterface(); // Show empty state
+                    updateInterface();
                 }
             } catch (error) {
                 console.error('Error loading from Google Sheets:', error);
                 updateSyncStatus('error', '❌ Failed to connect to Google Sheets');
                 showNotification(`Failed to load data: ${error.message}`, 'error');
-                updateInterface(); // Show empty state
+                updateInterface();
             } finally {
                 isSyncing = false;
             }
         }
 
-        // JSONP fallback method for better compatibility
+        // JSONP كحل بديل للاتصال
         function loadWithJSONP(url) {
             return new Promise((resolve, reject) => {
                 const script = document.createElement('script');
                 const callbackName = 'jsonp_callback_' + Math.round(100000 * Math.random());
                 
-                // Add callback parameter to URL
                 const separator = url.includes('?') ? '&' : '?';
                 script.src = url + separator + 'callback=' + callbackName;
                 
@@ -912,7 +1454,6 @@
                 
                 document.head.appendChild(script);
                 
-                // Timeout after 15 seconds
                 setTimeout(() => {
                     if (window[callbackName]) {
                         document.head.removeChild(script);
@@ -923,41 +1464,11 @@
             });
         }
 
-        // Determine employee status with safer data handling
-        function determineStatus(row) {
-            try {
-                const status = safeString(safeGet(row, 'Status', 'status')).toLowerCase();
-                
-                // If status is explicitly set, use it
-                if (status === 'active' || status === 'نشط') return 'active';
-                if (status === 'inactive' || status === 'غير نشط') return 'inactive';
-                
-                // If no explicit status, determine based on end date
-                const endDate = safeString(safeGet(row, 'End Date', 'endDate'));
-                if (endDate) {
-                    try {
-                        const contractEndDate = new Date(endDate);
-                        const today = new Date();
-                        return contractEndDate >= today ? 'active' : 'inactive';
-                    } catch (dateError) {
-                        console.log('Invalid date format:', endDate);
-                    }
-                }
-                
-                // Default to active if no end date or invalid date
-                return 'active';
-            } catch (error) {
-                console.error('Error determining status:', error);
-                return 'active';
-            }
-        }
-
-        // Save employee to Google Sheets using both methods
+        // حفظ الموظف في Google Sheets
         async function saveToGoogleSheets(employeeData, isUpdate = false) {
             try {
                 updateSyncStatus('loading', '🔄 Saving to Google Sheets...');
                 
-                // Build query parameters for GET request
                 const params = new URLSearchParams({
                     action: isUpdate ? 'update' : 'add',
                     name: employeeData.name || '',
@@ -976,37 +1487,28 @@
                 const url = `${sheetsUrl}?${params.toString()}`;
                 console.log('Saving to URL:', url);
 
-                let success = false;
-                let result;
+                const response = await fetch(url, {
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-cache',
+                    redirect: 'follow'
+                });
 
-                // Try direct fetch first
-                try {
-                    const response = await fetch(url, {
-                        method: 'GET',
-                        mode: 'cors',
-                        cache: 'no-cache',
-                        redirect: 'follow'
-                    });
-
-                    if (response.ok) {
-                        const text = await response.text();
-                        try {
-                            result = JSON.parse(text);
-                            success = true;
-                        } catch (parseError) {
-                            if (text.includes('تم الحفظ') || text.includes('success')) {
-                                result = { success: true, message: 'تم الحفظ بنجاح' };
-                                success = true;
-                            }
-                        }
-                    }
-                } catch (fetchError) {
-                    console.log('Direct save failed, trying alternative method:', fetchError.message);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
-                // If direct method failed, try JSONP or inform user
-                if (!success) {
-                    throw new Error('Save operation failed. Please try again or check your connection.');
+                const text = await response.text();
+                let result;
+                
+                try {
+                    result = JSON.parse(text);
+                } catch (parseError) {
+                    if (text.includes('تم الحفظ') || text.includes('success')) {
+                        result = { success: true, message: 'تم الحفظ بنجاح' };
+                    } else {
+                        throw new Error('Invalid response format');
+                    }
                 }
 
                 if (result.success) {
@@ -1024,7 +1526,7 @@
             }
         }
 
-        // Delete employee from Google Sheets using GET method - Fixed version
+        // حذف الموظف من Google Sheets
         async function deleteFromGoogleSheets(employeeId) {
             try {
                 updateSyncStatus('loading', '🔄 Deleting from Google Sheets...');
@@ -1045,13 +1547,10 @@
                 });
 
                 if (!response.ok) {
-                    console.log('Response not OK:', response.status);
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
                 const text = await response.text();
-                console.log('Delete response:', text);
-                
                 let result;
                 
                 try {
@@ -1060,7 +1559,6 @@
                     if (text.includes('تم الحذف') || text.includes('success') || text.includes('deleted')) {
                         result = { success: true, message: 'تم الحذف بنجاح' };
                     } else {
-                        console.log('Parse error:', parseError);
                         throw new Error('Invalid response format');
                     }
                 }
@@ -1069,7 +1567,6 @@
                     updateSyncStatus('success', '✅ Deleted from Google Sheets');
                     return true;
                 } else {
-                    console.log('Delete operation failed:', result);
                     throw new Error(result.error || 'Failed to delete');
                 }
             } catch (error) {
@@ -1080,97 +1577,320 @@
             }
         }
 
-        // Sync with Google Sheets
-        async function syncWithSheets() {
-            await loadFromGoogleSheets();
+        // حفظ الإعدادات في Google Sheets
+        async function saveSettingsToSheets(type, value) {
+            try {
+                const params = new URLSearchParams({
+                    action: 'add_setting',
+                    type: type,
+                    value: value
+                });
+
+                const url = `${sheetsUrl}?${params.toString()}`;
+                console.log('Saving setting to URL:', url);
+
+                const response = await fetch(url, {
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-cache',
+                    redirect: 'follow'
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const text = await response.text();
+                let result;
+                
+                try {
+                    result = JSON.parse(text);
+                } catch (parseError) {
+                    if (text.includes('success') || text.includes('saved')) {
+                        result = { success: true };
+                    } else {
+                        throw new Error('Invalid response format');
+                    }
+                }
+
+                return result.success;
+            } catch (error) {
+                console.error('Error saving settings:', error);
+                showNotification(`Failed to save ${type}: ${error.message}`, 'error');
+                return false;
+            }
         }
 
-        // Update Google Sheets URL
-        function updateSheetUrl() {
-            const newUrl = safeString(document.getElementById('sheetUrl').value);
-            if (newUrl) {
-                sheetsUrl = newUrl;
-                showNotification('Google Sheets URL updated successfully!', 'success');
+        // تهيئة النظام عند التحميل
+        setTimeout(() => {
+            initializeUrlSystem();
+            addUrlStatusToInterface();
+            addResetButton();
+            updateUrlStatusDisplay();
+        }, 1000);
+
+        // مزامنة تلقائية كل 5 دقائق
+        setInterval(() => {
+            if (!isSyncing && employees.length > 0) {
+                console.log('🔄 Auto-sync with Google Sheets...');
                 syncWithSheets();
             }
+        }, 300000); // 5 minutes
+
+        console.log('✅ Google Sheets Integration with Dynamic URL System Loaded');
+        console.log('🔗 Current Sheets URL:', sheetsUrl);
+<!-- الجزء الخامس -->
+
+// ===============================
+        // Employee Management
+        // ===============================
+
+        // عرض نموذج إضافة موظف جديد
+        function showAddForm() {
+            document.getElementById('formTitle').textContent = 'Add New Employee';
+            
+            // إعادة تعيين جميع حقول النموذج
+            document.getElementById('employeeName').value = '';
+            document.getElementById('employeeId').value = '';
+            document.getElementById('employeeEmail').value = '';
+            document.getElementById('employeeDepartment').value = '';
+            document.getElementById('employeeJobTitle').value = '';
+            document.getElementById('employeeLocation').value = '';
+            document.getElementById('employeeNationality').value = '';
+            document.getElementById('employeeStartDate').value = '';
+            document.getElementById('employeeEndDate').value = '';
+            document.getElementById('employeeStatus').value = 'active';
+            document.getElementById('employeeNotes').value = '';
+            
+            editingIndex = -1;
+            document.getElementById('employeeForm').style.display = 'flex';
         }
 
-        // Show tabs
-        function showTab(tabName) {
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            document.querySelectorAll('.nav-tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
+        // تعديل موظف موجود
+        function editEmployee(index) {
+            editingIndex = index;
+            const emp = employees[index];
             
-            document.getElementById(tabName).classList.add('active');
-            event.target.classList.add('active');
+            document.getElementById('formTitle').textContent = 'Edit Employee';
+            document.getElementById('employeeName').value = emp.name || '';
+            document.getElementById('employeeId').value = emp.id || '';
+            document.getElementById('employeeEmail').value = emp.email || '';
+            document.getElementById('employeeDepartment').value = emp.department || '';
+            document.getElementById('employeeJobTitle').value = emp.jobTitle || '';
+            document.getElementById('employeeLocation').value = emp.location || '';
+            document.getElementById('employeeNationality').value = emp.nationality || '';
+            document.getElementById('employeeStatus').value = emp.status || 'active';
+            document.getElementById('employeeStartDate').value = emp.startDate || '';
+            document.getElementById('employeeEndDate').value = emp.endDate || '';
+            document.getElementById('employeeNotes').value = emp.notes || '';
             
-            updateInterface();
+            document.getElementById('employeeForm').style.display = 'flex';
         }
 
-        // Update interface based on data availability
-        function updateInterface() {
-            if (employees.length === 0) {
-                showEmptyStates();
-            } else {
-                showDataContent();
-                updateDashboard();
-                loadEmployeeTable();
-                loadReports();
+        // حفظ الموظف (إضافة أو تعديل)
+        async function saveEmployee() {
+            try {
+                showNotification('Saving employee...', 'info');
+                
+                const name = safeString(document.getElementById('employeeName').value);
+                const department = safeString(document.getElementById('employeeDepartment').value);
+                const jobTitle = safeString(document.getElementById('employeeJobTitle').value);
+
+                // التحقق من الحقول المطلوبة
+                if (!name) {
+                    showNotification('Employee name is required!', 'error');
+                    return;
+                }
+                if (!department) {
+                    showNotification('Department is required!', 'error');
+                    return;
+                }
+                if (!jobTitle) {
+                    showNotification('Job title is required!', 'error');
+                    return;
+                }
+
+                // التحقق من صحة التواريخ
+                if (!validateDates()) {
+                    return;
+                }
+                
+                // توليد ID إذا كان فارغاً
+                let employeeId = safeString(document.getElementById('employeeId').value);
+                if (!employeeId) {
+                    employeeId = Math.floor(Math.random() * 100000).toString();
+                }
+                
+                // التحقق من تفرد ID الموظف (فقط عند إضافة موظف جديد)
+                if (editingIndex === -1) {
+                    const existingEmployee = employees.find(emp => emp.id === employeeId);
+                    if (existingEmployee) {
+                        showNotification('Employee ID already exists! Please use a different ID.', 'error');
+                        return;
+                    }
+                }
+                
+                // إنشاء كائن الموظف
+                const employee = {
+                    name: name,
+                    id: employeeId,
+                    email: safeString(document.getElementById('employeeEmail').value),
+                    department: department,
+                    jobTitle: jobTitle,
+                    location: safeString(document.getElementById('employeeLocation').value),
+                    nationality: safeString(document.getElementById('employeeNationality').value),
+                    status: safeString(document.getElementById('employeeStatus').value) || 'active',
+                    startDate: safeString(document.getElementById('employeeStartDate').value),
+                    endDate: safeString(document.getElementById('employeeEndDate').value),
+                    notes: safeString(document.getElementById('employeeNotes').value)
+                };
+                
+                // تحديث الحالة تلقائياً بناءً على تاريخ الانتهاء
+                if (employee.endDate) {
+                    const today = new Date();
+                    const contractEndDate = new Date(employee.endDate);
+                    
+                    if (contractEndDate < today) {
+                        employee.status = 'inactive';
+                    }
+                }
+                
+                // حفظ في Google Sheets
+                const isUpdate = editingIndex >= 0;
+                const success = await saveToGoogleSheets(employee, isUpdate);
+                
+                if (success) {
+                    // تحديث البيانات المحلية
+                    if (editingIndex >= 0) {
+                        employees[editingIndex] = employee;
+                    } else {
+                        employees.push(employee);
+                    }
+                    
+                    // تحديث البيانات ذات الصلة
+                    if (employee.department && !departments.includes(employee.department)) {
+                        departments.push(employee.department);
+                    }
+                    if (employee.jobTitle && !jobTitles.includes(employee.jobTitle)) {
+                        jobTitles.push(employee.jobTitle);
+                    }
+                    if (employee.location && !locations.includes(employee.location)) {
+                        locations.push(employee.location);
+                    }
+                    
+                    // تحديث الواجهة
+                    updateAllDropdowns();
+                    updateSettingsLists();
+                    hideForm();
+                    updateInterface();
+                    
+                    const message = editingIndex >= 0 ? 'Employee updated successfully!' : 'Employee added successfully!';
+                    showNotification(message, 'success');
+                    
+                    editingIndex = -1;
+                } else {
+                    showNotification('Failed to save employee to Google Sheets', 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error in saveEmployee:', error);
+                showNotification(`Error saving employee: ${error.message}`, 'error');
             }
         }
 
-        // Show empty states
-        function showEmptyStates() {
-            // Dashboard empty state
-            document.getElementById('dashboardContent').innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">📊</div>
-                    <h3>Welcome to HR Management System</h3>
-                    <p>Start by adding employees manually or sync with Google Sheets</p>
-                    <div class="action-buttons" style="justify-content: center;">
-                        <button class="action-btn btn-success" onclick="showAddForm()">
-                            ➕ Add First Employee
-                        </button>
-                        <button class="action-btn btn-info" onclick="syncWithSheets()">
-                            🔄 Sync with Google Sheets
-                        </button>
-                    </div>
-                </div>
-            `;
-
-            // Employees empty state
-            document.getElementById('employeesContent').innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">👥</div>
-                    <h3>No Employees Found</h3>
-                    <p>Add your first employee or sync with Google Sheets</p>
-                    <div class="action-buttons" style="justify-content: center;">
-                        <button class="action-btn btn-success" onclick="showAddForm()">
-                            ➕ Add Employee
-                        </button>
-                        <button class="action-btn btn-info" onclick="syncWithSheets()">
-                            🔄 Sync with Google Sheets
-                        </button>
-                    </div>
-                </div>
-            `;
-
-            // Reports empty state
-            document.getElementById('reportsContent').innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">📈</div>
-                    <h3>No Data for Reports</h3>
-                    <p>Reports will be available once you add employee data</p>
-                </div>
-            `;
+        // حذف موظف
+        async function deleteEmployee(index) {
+            if (confirm('Are you sure you want to delete this employee?')) {
+                const employee = employees[index];
+                
+                try {
+                    const success = await deleteFromGoogleSheets(employee.id);
+                    
+                    if (success) {
+                        employees.splice(index, 1);
+                        updateInterface();
+                        showNotification('Employee deleted successfully!', 'success');
+                    } else {
+                        showNotification('Failed to delete from Google Sheets', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error deleting employee:', error);
+                    showNotification(`Error deleting employee: ${error.message}`, 'error');
+                }
+            }
         }
 
-        // Show data content
+        // تحميل جدول الموظفين
+        function loadEmployeeTable() {
+            const tbody = document.getElementById('employeeTableBody');
+            if (!tbody) return;
+            
+            tbody.innerHTML = '';
+            
+            employees.forEach((emp, index) => {
+                const row = document.createElement('tr');
+                const statusBadge = emp.status === 'active' ? 
+                    '<span class="status-badge status-active">Active</span>' : 
+                    '<span class="status-badge status-inactive">Inactive</span>';
+                
+                const nationalityBadge = emp.nationality === 'Saudi' ? 
+                    '<span class="status-badge" style="background: #c6f6d5; color: #22543d;">Saudi</span>' : 
+                    emp.nationality === 'Non-Saudi' ?
+                    '<span class="status-badge" style="background: #bee3f8; color: #2a4365;">Non-Saudi</span>' :
+                    '-';
+                
+                row.innerHTML = `
+                    <td>${emp.id || '-'}</td>
+                    <td>${emp.name}</td>
+                    <td>${emp.email || '-'}</td>
+                    <td>${emp.department || '-'}</td>
+                    <td>${emp.jobTitle || '-'}</td>
+                    <td>${emp.location || '-'}</td>
+                    <td>${nationalityBadge}</td>
+                    <td>${emp.startDate ? formatDate(emp.startDate) : '-'}</td>
+                    <td>${emp.endDate ? formatDate(emp.endDate) : '-'}</td>
+                    <td>${statusBadge}</td>
+                    <td>
+                        <button class="btn btn-edit" onclick="editEmployee(${index})">Edit</button>
+                        <button class="btn btn-delete" onclick="deleteEmployee(${index})">Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // البحث في الموظفين
+        function searchEmployees(searchTerm) {
+            const rows = document.querySelectorAll('#employeeTableBody tr');
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(searchTerm.toLowerCase())) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        // تصفية الموظفين
+        function filterEmployees(filterValue, filterType) {
+            const rows = document.querySelectorAll('#employeeTableBody tr');
+            
+            rows.forEach((row, index) => {
+                const employee = employees[index];
+                let shouldShow = true;
+                
+                if (filterType === 'status' && filterValue) {
+                    shouldShow = employee.status === filterValue;
+                }
+                
+                row.style.display = shouldShow ? '' : 'none';
+            });
+        }
+
+        // عرض محتوى البيانات عند وجود موظفين
         function showDataContent() {
-            // Dashboard content
             document.getElementById('dashboardContent').innerHTML = `
                 <div class="dashboard-grid">
                     <div class="stat-card">
@@ -1223,7 +1943,6 @@
                 </div>
             `;
 
-            // Employees content
             document.getElementById('employeesContent').innerHTML = `
                 <div class="action-buttons">
                     <button class="action-btn btn-success" onclick="showAddForm()">
@@ -1273,7 +1992,6 @@
                 </div>
             `;
 
-            // Reports content
             document.getElementById('reportsContent').innerHTML = `
                 <div class="dashboard-grid">
                     <div class="chart-container">
@@ -1296,37 +2014,38 @@
             `;
         }
 
-        // Update all dropdowns
-        function updateAllDropdowns() {
-            updateDropdown('employeeDepartment', departments);
-            updateDropdown('employeeJobTitle', jobTitles);
-        }
-
-        // Update dropdown
-        function updateDropdown(selectId, options) {
-            const select = document.getElementById(selectId);
-            if (!select) return;
+        // فحص العقود المنتهية الصلاحية
+        function checkExpiringContracts() {
+            const today = new Date();
+            const thirtyDaysFromNow = new Date(today.getTime() + (30 * 24 * 60 * 60 * 1000));
             
-            const currentValue = select.value;
-            
-            // Keep the first option
-            const firstOption = select.querySelector('option[value=""]');
-            select.innerHTML = '';
-            if (firstOption) {
-                select.appendChild(firstOption);
-            }
-            
-            options.forEach(option => {
-                const optionElement = document.createElement('option');
-                optionElement.value = option;
-                optionElement.textContent = option;
-                select.appendChild(optionElement);
+            const expiringContracts = employees.filter(emp => {
+                if (!emp.endDate || emp.status !== 'active') return false;
+                const endDate = new Date(emp.endDate);
+                return endDate <= thirtyDaysFromNow && endDate >= today;
             });
             
-            select.value = currentValue;
+            if (expiringContracts.length > 0) {
+                const message = `Alert: ${expiringContracts.length} contract(s) expiring within 30 days`;
+                showNotification(message, 'warning');
+            }
         }
 
-        // Update dashboard
+        // تشغيل فحص العقود المنتهية بعد تحميل البيانات
+        setTimeout(() => {
+            if (employees.length > 0) {
+                checkExpiringContracts();
+            }
+        }, 3000);
+
+        console.log('✅ Employee Management Functions Loaded');
+
+    <!-- الجزء السادس-->
+// ===============================
+        // Dashboard & Charts
+        // ===============================
+
+        // تحديث لوحة المعلومات
         function updateDashboard() {
             const activeEmployees = employees.filter(emp => emp.status === 'active').length;
             const saudiEmployees = employees.filter(emp => emp.nationality === 'Saudi').length;
@@ -1334,6 +2053,7 @@
             const uniqueDepartments = [...new Set(employees.map(emp => emp.department))].filter(d => d);
             const uniqueLocations = [...new Set(employees.map(emp => emp.location))].filter(l => l);
             
+            // تحديث الأرقام في البطاقات
             const totalEl = document.getElementById('totalEmployees');
             const activeEl = document.getElementById('activeEmployees');
             const saudiEl = document.getElementById('saudiEmployees');
@@ -1348,17 +2068,18 @@
             if (deptEl) deptEl.textContent = uniqueDepartments.length;
             if (locEl) locEl.textContent = uniqueLocations.length;
             
+            // رسم الرسوم البيانية
             drawCharts();
         }
 
-        // Draw charts
+        // رسم جميع الرسوم البيانية
         function drawCharts() {
-            // Destroy previous charts
+            // تدمير الرسوم البيانية السابقة
             Object.values(charts).forEach(chart => {
                 if (chart) chart.destroy();
             });
             
-            // Department chart
+            // رسم بياني للأقسام
             const departmentCounts = employees.reduce((acc, emp) => {
                 if (emp.department) {
                     acc[emp.department] = (acc[emp.department] || 0) + 1;
@@ -1370,7 +2091,7 @@
                 charts.department = drawPieChart('departmentChart', departmentCounts);
             }
             
-            // Job title chart
+            // رسم بياني للمسميات الوظيفية
             const jobTitleCounts = employees.reduce((acc, emp) => {
                 if (emp.jobTitle) {
                     acc[emp.jobTitle] = (acc[emp.jobTitle] || 0) + 1;
@@ -1382,7 +2103,7 @@
                 charts.jobTitle = drawBarChart('jobTitleChart', jobTitleCounts);
             }
             
-            // Location chart - only show if locations exist
+            // رسم بياني للمواقع
             const locationCounts = employees.reduce((acc, emp) => {
                 if (emp.location && emp.location.trim() !== '') {
                     acc[emp.location] = (acc[emp.location] || 0) + 1;
@@ -1394,18 +2115,11 @@
                 if (Object.keys(locationCounts).length > 0) {
                     charts.location = drawDoughnutChart('locationChart', locationCounts);
                 } else {
-                    // Show message if no location data
-                    const canvas = document.getElementById('locationChart');
-                    const ctx = canvas.getContext('2d');
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.fillStyle = '#718096';
-                    ctx.font = '16px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('No location data available', canvas.width/2, canvas.height/2);
+                    drawEmptyChart('locationChart', 'No location data available');
                 }
             }
             
-            // Status chart
+            // رسم بياني للحالة
             const statusCounts = employees.reduce((acc, emp) => {
                 const status = emp.status === 'active' ? 'Active' : 'Inactive';
                 acc[status] = (acc[status] || 0) + 1;
@@ -1416,7 +2130,7 @@
                 charts.status = drawPieChart('statusChart', statusCounts);
             }
             
-            // Nationality chart - only show if nationality data exists
+            // رسم بياني للجنسية
             const nationalityCounts = employees.reduce((acc, emp) => {
                 if (emp.nationality && emp.nationality.trim() !== '') {
                     acc[emp.nationality] = (acc[emp.nationality] || 0) + 1;
@@ -1428,19 +2142,12 @@
                 if (Object.keys(nationalityCounts).length > 0) {
                     charts.nationality = drawDoughnutChart('nationalityChart', nationalityCounts);
                 } else {
-                    // Show message if no nationality data
-                    const canvas = document.getElementById('nationalityChart');
-                    const ctx = canvas.getContext('2d');
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.fillStyle = '#718096';
-                    ctx.font = '16px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('No nationality data available', canvas.width/2, canvas.height/2);
+                    drawEmptyChart('nationalityChart', 'No nationality data available');
                 }
             }
         }
 
-        // Draw pie chart
+        // رسم رسم بياني دائري
         function drawPieChart(canvasId, data) {
             const ctx = document.getElementById(canvasId);
             if (!ctx) return null;
@@ -1455,21 +2162,38 @@
                             '#667eea', '#764ba2', '#f093fb', '#f5576c',
                             '#4facfe', '#00f2fe', '#43e97b', '#38f9d7',
                             '#ffeaa7', '#fab1a0', '#fd79a8', '#fdcb6e'
-                        ]
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
                     }]
                 },
                 options: {
                     responsive: true,
                     plugins: {
                         legend: {
-                            position: 'bottom'
+                            position: 'bottom',
+                            labels: {
+                                padding: 20,
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
                         }
                     }
                 }
             });
         }
 
-        // Draw bar chart
+        // رسم رسم بياني شريطي
         function drawBarChart(canvasId, data) {
             const ctx = document.getElementById(canvasId);
             if (!ctx) return null;
@@ -1483,7 +2207,9 @@
                         data: Object.values(data),
                         backgroundColor: 'rgba(102, 126, 234, 0.8)',
                         borderColor: 'rgba(102, 126, 234, 1)',
-                        borderWidth: 1
+                        borderWidth: 2,
+                        borderRadius: 4,
+                        borderSkipped: false,
                     }]
                 },
                 options: {
@@ -1493,19 +2219,34 @@
                             beginAtZero: true,
                             ticks: {
                                 stepSize: 1
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
                             }
                         }
                     },
                     plugins: {
                         legend: {
                             display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Employees: ${context.parsed.y}`;
+                                }
+                            }
                         }
                     }
                 }
             });
         }
 
-        // Draw doughnut chart
+        // رسم رسم بياني دائري مجوف
         function drawDoughnutChart(canvasId, data) {
             const ctx = document.getElementById(canvasId);
             if (!ctx) return null;
@@ -1516,674 +2257,62 @@
                     labels: Object.keys(data),
                     datasets: [{
                         data: Object.values(data),
-                        backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe', '#00f2fe']
+                        backgroundColor: [
+                            '#667eea', '#764ba2', '#f093fb', '#f5576c', 
+                            '#4facfe', '#00f2fe', '#43e97b', '#38f9d7'
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
                     }]
                 },
                 options: {
                     responsive: true,
+                    cutout: '60%',
                     plugins: {
                         legend: {
-                            position: 'bottom'
+                            position: 'bottom',
+                            labels: {
+                                padding: 20,
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
                         }
                     }
                 }
             });
         }
 
-        // Load employee table
-        function loadEmployeeTable() {
-            const tbody = document.getElementById('employeeTableBody');
-            if (!tbody) return;
+        // رسم رسالة عندما لا توجد بيانات
+        function drawEmptyChart(canvasId, message) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
             
-            tbody.innerHTML = '';
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            employees.forEach((emp, index) => {
-                const row = document.createElement('tr');
-                const statusBadge = emp.status === 'active' ? 
-                    '<span class="status-badge status-active">Active</span>' : 
-                    '<span class="status-badge status-inactive">Inactive</span>';
-                
-                const nationalityBadge = emp.nationality === 'Saudi' ? 
-                    '<span class="status-badge" style="background: #c6f6d5; color: #22543d;">Saudi</span>' : 
-                    emp.nationality === 'Non-Saudi' ?
-                    '<span class="status-badge" style="background: #bee3f8; color: #2a4365;">Non-Saudi</span>' :
-                    '-';
-                
-                row.innerHTML = `
-                    <td>${emp.id || '-'}</td>
-                    <td>${emp.name}</td>
-                    <td>${emp.email || '-'}</td>
-                    <td>${emp.department || '-'}</td>
-                    <td>${emp.jobTitle || '-'}</td>
-                    <td>${emp.location || '-'}</td>
-                    <td>${nationalityBadge}</td>
-                    <td>${emp.startDate ? formatDate(emp.startDate) : '-'}</td>
-                    <td>${emp.endDate ? formatDate(emp.endDate) : '-'}</td>
-                    <td>${statusBadge}</td>
-                    <td>
-                        <button class="btn btn-edit" onclick="editEmployee(${index})">Edit</button>
-                        <button class="btn btn-delete" onclick="deleteEmployee(${index})">Delete</button>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
+            // تعيين النص
+            ctx.fillStyle = '#718096';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // رسم النص في وسط الرسم البياني
+            ctx.fillText(message, canvas.width / 2, canvas.height / 2);
         }
 
-        // Format date
-        function formatDate(dateString) {
-            if (!dateString) return '-';
-            const date = new Date(dateString);
-            return date.toLocaleDateString('en-US');
-        }
-
-        // Search employees
-        function searchEmployees(searchTerm) {
-            const rows = document.querySelectorAll('#employeeTableBody tr');
-            
-            rows.forEach(row => {
-                const text = row.textContent.toLowerCase();
-                if (text.includes(searchTerm.toLowerCase())) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-        }
-
-        // Filter employees
-        function filterEmployees(filterValue, filterType) {
-            const rows = document.querySelectorAll('#employeeTableBody tr');
-            
-            rows.forEach((row, index) => {
-                const employee = employees[index];
-                let shouldShow = true;
-                
-                if (filterType === 'status' && filterValue) {
-                    shouldShow = employee.status === filterValue;
-                }
-                
-                row.style.display = shouldShow ? '' : 'none';
-            });
-        }
-
-        // Show add form
-        function showAddForm() {
-            console.log('showAddForm called');
-            
-            document.getElementById('formTitle').textContent = 'Add New Employee';
-            
-            // Reset form fields manually
-            document.getElementById('employeeName').value = '';
-            document.getElementById('employeeId').value = '';
-            document.getElementById('employeeEmail').value = '';
-            document.getElementById('employeeDepartment').value = '';
-            document.getElementById('employeeJobTitle').value = '';
-            document.getElementById('employeeLocation').value = '';
-            document.getElementById('employeeNationality').value = '';
-            document.getElementById('employeeStartDate').value = '';
-            document.getElementById('employeeEndDate').value = '';
-            document.getElementById('employeeStatus').value = 'active';
-            document.getElementById('employeeNotes').value = '';
-            
-            editingIndex = -1;
-            document.getElementById('employeeForm').style.display = 'flex';
-            
-            console.log('Add form displayed');
-        }
-
-        // Edit employee
-        function editEmployee(index) {
-            editingIndex = index;
-            const emp = employees[index];
-            
-            document.getElementById('formTitle').textContent = 'Edit Employee';
-            document.getElementById('employeeName').value = emp.name || '';
-            document.getElementById('employeeId').value = emp.id || '';
-            document.getElementById('employeeEmail').value = emp.email || '';
-            document.getElementById('employeeDepartment').value = emp.department || '';
-            document.getElementById('employeeJobTitle').value = emp.jobTitle || '';
-            document.getElementById('employeeLocation').value = emp.location || '';
-            document.getElementById('employeeNationality').value = emp.nationality || '';
-            document.getElementById('employeeStatus').value = emp.status || 'active';
-            document.getElementById('employeeStartDate').value = emp.startDate || '';
-            document.getElementById('employeeEndDate').value = emp.endDate || '';
-            document.getElementById('employeeNotes').value = emp.notes || '';
-            
-            document.getElementById('employeeForm').style.display = 'flex';
-        }
-
-        // Update employee status based on end date
-        function updateEmployeeStatus() {
-            const endDate = document.getElementById('employeeEndDate').value;
-            const statusSelect = document.getElementById('employeeStatus');
-            
-            if (endDate) {
-                const today = new Date();
-                const contractEndDate = new Date(endDate);
-                
-                if (contractEndDate < today) {
-                    statusSelect.value = 'inactive';
-                    showNotification('Status automatically set to Inactive (contract expired)', 'warning');
-                } else {
-                    statusSelect.value = 'active';
-                }
-            }
-        }
-
-        // Delete employee - Fixed version
-        async function deleteEmployee(index) {
-            if (confirm('Are you sure you want to delete this employee?')) {
-                const employee = employees[index];
-                
-                try {
-                    // Try to delete from Google Sheets first
-                    const success = await deleteFromGoogleSheets(employee.id);
-                    
-                    if (success) {
-                        employees.splice(index, 1);
-                        updateInterface();
-                        showNotification('Employee deleted successfully!', 'success');
-                    } else {
-                        showNotification('Failed to delete from Google Sheets', 'error');
-                    }
-                } catch (error) {
-                    console.error('Error deleting employee:', error);
-                    showNotification(`Error deleting employee: ${error.message}`, 'error');
-                }
-            }
-        }
-
-        // Hide form
-        function hideForm() {
-            document.getElementById('employeeForm').style.display = 'none';
-        }
-
-        // Validate dates
-        function validateDates() {
-            const startDate = document.getElementById('employeeStartDate').value;
-            const endDate = document.getElementById('employeeEndDate').value;
-            
-            if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
-                showNotification('Start date cannot be after end date!', 'error');
-                return false;
-            }
-            return true;
-        }
-
-        // Save employee - Completely rewritten and simplified
-        async function saveEmployee() {
-            console.log('saveEmployee function called');
-            
-            try {
-                // Show loading message
-                showNotification('Saving employee...', 'info');
-                
-                // Get form values
-                const name = safeString(document.getElementById('employeeName').value);
-                const department = safeString(document.getElementById('employeeDepartment').value);
-                const jobTitle = safeString(document.getElementById('employeeJobTitle').value);
-
-                console.log('Form values:', { name, department, jobTitle });
-
-                // Validate required fields
-                if (!name) {
-                    showNotification('Employee name is required!', 'error');
-                    return;
-                }
-                if (!department) {
-                    showNotification('Department is required!', 'error');
-                    return;
-                }
-                if (!jobTitle) {
-                    showNotification('Job title is required!', 'error');
-                    return;
-                }
-
-                // Validate dates
-                const startDate = safeString(document.getElementById('employeeStartDate').value);
-                const endDate = safeString(document.getElementById('employeeEndDate').value);
-                
-                if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
-                    showNotification('Start date cannot be after end date!', 'error');
-                    return;
-                }
-                
-                // Generate ID if empty
-                let employeeId = safeString(document.getElementById('employeeId').value);
-                if (!employeeId) {
-                    employeeId = Math.floor(Math.random() * 100000).toString();
-                }
-                
-                // Check for unique employee ID (only if adding new employee)
-                if (editingIndex === -1) {
-                    const existingEmployee = employees.find(emp => emp.id === employeeId);
-                    if (existingEmployee) {
-                        showNotification('Employee ID already exists! Please use a different ID.', 'error');
-                        return;
-                    }
-                }
-                
-                // Create employee object
-                const employee = {
-                    name: name,
-                    id: employeeId,
-                    email: safeString(document.getElementById('employeeEmail').value),
-                    department: department,
-                    jobTitle: jobTitle,
-                    location: safeString(document.getElementById('employeeLocation').value),
-                    nationality: safeString(document.getElementById('employeeNationality').value),
-                    status: safeString(document.getElementById('employeeStatus').value) || 'active',
-                    startDate: startDate,
-                    endDate: endDate,
-                    notes: safeString(document.getElementById('employeeNotes').value)
-                };
-
-                console.log('Employee object created:', employee);
-                
-                // Auto-update status based on end date
-                if (employee.endDate) {
-                    const today = new Date();
-                    const contractEndDate = new Date(employee.endDate);
-                    
-                    if (contractEndDate < today) {
-                        employee.status = 'inactive';
-                    }
-                }
-                
-                // Save to Google Sheets
-                const isUpdate = editingIndex >= 0;
-                console.log('Saving to Google Sheets, isUpdate:', isUpdate);
-                
-                const success = await saveToGoogleSheets(employee, isUpdate);
-                
-                if (success) {
-                    console.log('Successfully saved to Google Sheets');
-                    
-                    // Update local data
-                    if (editingIndex >= 0) {
-                        employees[editingIndex] = employee;
-                        console.log('Updated existing employee at index:', editingIndex);
-                    } else {
-                        employees.push(employee);
-                        console.log('Added new employee, total employees:', employees.length);
-                    }
-                    
-                    // Update related data
-                    if (employee.department && !departments.includes(employee.department)) {
-                        departments.push(employee.department);
-                    }
-                    if (employee.jobTitle && !jobTitles.includes(employee.jobTitle)) {
-                        jobTitles.push(employee.jobTitle);
-                    }
-                    if (employee.location && !locations.includes(employee.location)) {
-                        locations.push(employee.location);
-                    }
-                    
-                    // Update interface
-                    updateAllDropdowns();
-                    updateSettingsLists();
-                    hideForm();
-                    updateInterface();
-                    
-                    // Show success message
-                    const message = editingIndex >= 0 ? 'Employee updated successfully!' : 'Employee added successfully!';
-                    showNotification(message, 'success');
-                    
-                    // Reset editing index
-                    editingIndex = -1;
-                    
-                    console.log('Save operation completed successfully');
-                } else {
-                    console.log('Failed to save to Google Sheets');
-                    showNotification('Failed to save employee to Google Sheets', 'error');
-                }
-                
-            } catch (error) {
-                console.error('Error in saveEmployee:', error);
-                showNotification(`Error saving employee: ${error.message}`, 'error');
-            }
-        }
-
-        // Manage departments with Google Sheets sync
-        async function addDepartment() {
-            const newDept = safeString(document.getElementById('newDepartment').value);
-            if (!newDept) {
-                showNotification('Please enter a department name!', 'error');
-                return;
-            }
-            
-            if (departments.includes(newDept)) {
-                showNotification('Department already exists!', 'error');
-                return;
-            }
-
-            // Save to Google Sheets first
-            const saved = await saveSettingsToSheets('department', newDept);
-            
-            if (saved) {
-                departments.push(newDept);
-                updateAllDropdowns();
-                updateSettingsLists();
-                document.getElementById('newDepartment').value = '';
-                showNotification('Department added and saved to Google Sheets!', 'success');
-            }
-        }
-
-        async function removeDepartment(dept) {
-            if (confirm('Are you sure you want to delete this department?')) {
-                const index = departments.indexOf(dept);
-                if (index > -1) {
-                    departments.splice(index, 1);
-                    updateAllDropdowns();
-                    updateSettingsLists();
-                    showNotification('Department deleted successfully!', 'success');
-                    
-                    // Note: In a full implementation, you'd also call an API to remove from sheets
-                    // For now, we'll just remove locally and re-sync will restore if needed
-                }
-            }
-        }
-
-        // Manage job titles with Google Sheets sync
-        async function addJobTitle() {
-            const newTitle = safeString(document.getElementById('newJobTitle').value);
-            if (!newTitle) {
-                showNotification('Please enter a job title!', 'error');
-                return;
-            }
-            
-            if (jobTitles.includes(newTitle)) {
-                showNotification('Job title already exists!', 'error');
-                return;
-            }
-
-            // Save to Google Sheets first
-            const saved = await saveSettingsToSheets('jobTitle', newTitle);
-            
-            if (saved) {
-                jobTitles.push(newTitle);
-                updateAllDropdowns();
-                updateSettingsLists();
-                document.getElementById('newJobTitle').value = '';
-                showNotification('Job title added and saved to Google Sheets!', 'success');
-            }
-        }
-
-        function removeJobTitle(title) {
-            if (confirm('Are you sure you want to delete this job title?')) {
-                const index = jobTitles.indexOf(title);
-                if (index > -1) {
-                    jobTitles.splice(index, 1);
-                    updateAllDropdowns();
-                    updateSettingsLists();
-                    showNotification('Job title deleted successfully!', 'success');
-                }
-            }
-        }
-
-        // Manage locations with Google Sheets sync
-        async function addLocation() {
-            const newLocation = safeString(document.getElementById('newLocation').value);
-            if (!newLocation) {
-                showNotification('Please enter a location name!', 'error');
-                return;
-            }
-            
-            if (locations.includes(newLocation)) {
-                showNotification('Location already exists!', 'error');
-                return;
-            }
-
-            // Save to Google Sheets first
-            const saved = await saveSettingsToSheets('location', newLocation);
-            
-            if (saved) {
-                locations.push(newLocation);
-                updateSettingsLists();
-                document.getElementById('newLocation').value = '';
-                showNotification('Location added and saved to Google Sheets!', 'success');
-            }
-        }
-
-        function removeLocation(location) {
-            if (confirm('Are you sure you want to delete this location?')) {
-                const index = locations.indexOf(location);
-                if (index > -1) {
-                    locations.splice(index, 1);
-                    updateSettingsLists();
-                    showNotification('Location deleted successfully!', 'success');
-                }
-            }
-        }
-
-        // Update settings lists
-        function updateSettingsLists() {
-            // Departments list
-            const deptList = document.getElementById('departmentsList');
-            if (deptList) {
-                deptList.innerHTML = '';
-                departments.forEach(dept => {
-                    const item = document.createElement('div');
-                    item.className = 'list-item';
-                    item.innerHTML = `
-                        <span>${dept}</span>
-                        <button class="btn btn-delete" onclick="removeDepartment('${dept}')">Delete</button>
-                    `;
-                    deptList.appendChild(item);
-                });
-            }
-
-            // Job titles list
-            const titlesList = document.getElementById('jobTitlesList');
-            if (titlesList) {
-                titlesList.innerHTML = '';
-                jobTitles.forEach(title => {
-                    const item = document.createElement('div');
-                    item.className = 'list-item';
-                    item.innerHTML = `
-                        <span>${title}</span>
-                        <button class="btn btn-delete" onclick="removeJobTitle('${title}')">Delete</button>
-                    `;
-                    titlesList.appendChild(item);
-                });
-            }
-
-            // Locations list
-            const locationsList = document.getElementById('locationsList');
-            if (locationsList) {
-                locationsList.innerHTML = '';
-                locations.forEach(location => {
-                    const item = document.createElement('div');
-                    item.className = 'list-item';
-                    item.innerHTML = `
-                        <span>${location}</span>
-                        <button class="btn btn-delete" onclick="removeLocation('${location}')">Delete</button>
-                    `;
-                    locationsList.appendChild(item);
-                });
-            }
-        }
-
-        // Import from Excel
-        function importFromExcel(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const sheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[sheetName];
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
-
-                    if (jsonData.length === 0) {
-                        showNotification('File is empty or contains no valid data!', 'error');
-                        return;
-                    }
-
-                    // Convert data to required format with SAFE handling
-                    const importedEmployees = jsonData.map((row, index) => {
-                        try {
-                            return {
-                                name: safeString(safeGet(row, 'Name', 'name')),
-                                id: safeString(safeGet(row, 'ID', 'id', 'Employee ID')) || (200000 + index).toString(),
-                                email: safeString(safeGet(row, 'Email', 'email')),
-                                department: safeString(safeGet(row, 'Department', 'department')),
-                                jobTitle: safeString(safeGet(row, 'Job Title', 'Job title', 'jobTitle')),
-                                location: safeString(safeGet(row, 'Location', 'location')),
-                                nationality: safeString(safeGet(row, 'Nationality', 'nationality')),
-                                status: safeString(safeGet(row, 'Status', 'status')) || 'active',
-                                startDate: safeString(safeGet(row, 'Start Date', 'startDate')),
-                                endDate: safeString(safeGet(row, 'End Date', 'endDate')),
-                                notes: safeString(safeGet(row, 'Notes', 'notes'))
-                            };
-                        } catch (rowError) {
-                            console.error(`Error processing import row ${index}:`, rowError);
-                            return null;
-                        }
-                    }).filter(emp => emp && emp.name);
-
-                    if (confirm(`Found ${importedEmployees.length} employees. Do you want to add them to the system?`)) {
-                        // Add imported employees to existing data
-                        employees = [...employees, ...importedEmployees];
-                        
-                        // Update lists based on imported data
-                        const newDepartments = [...new Set(importedEmployees.map(emp => emp.department))].filter(d => d);
-                        const newJobTitles = [...new Set(importedEmployees.map(emp => emp.jobTitle))].filter(j => j);
-                        const newLocations = [...new Set(importedEmployees.map(emp => emp.location))].filter(l => l);
-                        
-                        // Merge with existing lists
-                        departments = [...new Set([...departments, ...newDepartments])];
-                        jobTitles = [...new Set([...jobTitles, ...newJobTitles])];
-                        locations = [...new Set([...locations, ...newLocations])];
-                        
-                        updateAllDropdowns();
-                        updateSettingsLists();
-                        updateInterface();
-                        
-                        showNotification('Data imported successfully!', 'success');
-                    }
-                } catch (error) {
-                    console.error('Error importing file:', error);
-                    showNotification('Error reading file. Make sure it\'s a valid Excel file.', 'error');
-                }
-            };
-            
-            reader.readAsArrayBuffer(file);
-            event.target.value = ''; // Reset input
-        }
-
-        // Export to Excel
-        function exportToExcel() {
-            if (employees.length === 0) {
-                showNotification('No data to export!', 'error');
-                return;
-            }
-
-            // Prepare data for export
-            const exportData = employees.map(emp => ({
-                'Employee ID': emp.id,
-                'Name': emp.name,
-                'Email': emp.email,
-                'Department': emp.department,
-                'Job Title': emp.jobTitle,
-                'Location': emp.location,
-                'Nationality': emp.nationality,
-                'Start Date': emp.startDate ? formatDate(emp.startDate) : '',
-                'End Date': emp.endDate ? formatDate(emp.endDate) : '',
-                'Status': emp.status === 'active' ? 'Active' : 'Inactive',
-                'Notes': emp.notes
-            }));
-
-            // Create worksheet
-            const ws = XLSX.utils.json_to_sheet(exportData);
-            
-            // Improve column widths
-            const colWidths = [
-                { wch: 12 }, // Employee ID
-                { wch: 20 }, // Name
-                { wch: 25 }, // Email
-                { wch: 20 }, // Department
-                { wch: 20 }, // Job Title
-                { wch: 15 }, // Location
-                { wch: 12 }, // Nationality
-                { wch: 18 }, // Start Date
-                { wch: 18 }, // End Date
-                { wch: 12 }, // Status
-                { wch: 30 }  // Notes
-            ];
-            ws['!cols'] = colWidths;
-
-            // Create workbook
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Employee Data');
-            
-            // Add statistics sheet
-            const statsData = [
-                ['Statistic', 'Count'],
-                ['Total Employees', employees.length],
-                ['Active Employees', employees.filter(emp => emp.status === 'active').length],
-                ['Inactive Employees', employees.filter(emp => emp.status === 'inactive').length],
-                ['Saudi Employees', employees.filter(emp => emp.nationality === 'Saudi').length],
-                ['Non-Saudi Employees', employees.filter(emp => emp.nationality === 'Non-Saudi').length],
-                ['Departments', [...new Set(employees.map(emp => emp.department))].filter(d => d).length],
-                ['Locations', [...new Set(employees.map(emp => emp.location))].filter(l => l).length]
-            ];
-            
-            const statsWs = XLSX.utils.aoa_to_sheet(statsData);
-            statsWs['!cols'] = [{ wch: 20 }, { wch: 15 }];
-            XLSX.utils.book_append_sheet(wb, statsWs, 'Statistics');
-
-            // Download file
-            const fileName = `employee_data_${new Date().toISOString().split('T')[0]}.xlsx`;
-            XLSX.writeFile(wb, fileName);
-            
-            showNotification('Data exported successfully!', 'success');
-        }
-
-        // Export active employees only
-        function exportActiveEmployees() {
-            const activeEmployees = employees.filter(emp => emp.status === 'active');
-            
-            if (activeEmployees.length === 0) {
-                showNotification('No active employees to export!', 'error');
-                return;
-            }
-
-            const exportData = activeEmployees.map(emp => ({
-                'Employee ID': emp.id,
-                'Name': emp.name,
-                'Email': emp.email,
-                'Department': emp.department,
-                'Job Title': emp.jobTitle,
-                'Location': emp.location,
-                'Nationality': emp.nationality,
-                'Start Date': emp.startDate ? formatDate(emp.startDate) : '',
-                'End Date': emp.endDate ? formatDate(emp.endDate) : '',
-                'Notes': emp.notes
-            }));
-
-            const ws = XLSX.utils.json_to_sheet(exportData);
-            ws['!cols'] = [
-                { wch: 12 }, { wch: 20 }, { wch: 25 }, { wch: 20 },
-                { wch: 20 }, { wch: 15 }, { wch: 12 }, { wch: 18 }, 
-                { wch: 18 }, { wch: 30 }
-            ];
-
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Active Employees');
-
-            const fileName = `active_employees_${new Date().toISOString().split('T')[0]}.xlsx`;
-            XLSX.writeFile(wb, fileName);
-            
-            showNotification('Active employees exported successfully!', 'success');
-        }
-
-        // Load reports
+        // تحميل التقارير التفصيلية
         function loadReports() {
-            // Department report
+            // تقرير الأقسام
             const departmentCounts = employees.reduce((acc, emp) => {
                 if (emp.department) {
                     acc[emp.department] = (acc[emp.department] || 0) + 1;
@@ -2209,7 +2338,7 @@
             const deptDetails = document.getElementById('departmentDetails');
             if (deptDetails) deptDetails.innerHTML = departmentHtml;
             
-            // Job title report
+            // تقرير المسميات الوظيفية
             const jobTitleCounts = employees.reduce((acc, emp) => {
                 if (emp.jobTitle) {
                     acc[emp.jobTitle] = (acc[emp.jobTitle] || 0) + 1;
@@ -2237,7 +2366,7 @@
             const titleDetails = document.getElementById('jobTitleDetails');
             if (titleDetails) titleDetails.innerHTML = jobTitleHtml;
 
-            // Location report - only show if location data exists
+            // تقرير المواقع
             const locationCounts = employees.reduce((acc, emp) => {
                 if (emp.location && emp.location.trim() !== '') {
                     acc[emp.location] = (acc[emp.location] || 0) + 1;
@@ -2267,7 +2396,7 @@
             const locDetails = document.getElementById('locationDetails');
             if (locDetails) locDetails.innerHTML = locationHtml;
 
-            // Employment statistics
+            // إحصائيات التوظيف
             const activeCount = employees.filter(emp => emp.status === 'active').length;
             const inactiveCount = employees.filter(emp => emp.status === 'inactive').length;
             const saudiCount = employees.filter(emp => emp.nationality === 'Saudi').length;
@@ -2305,106 +2434,746 @@
             if (empStats) empStats.innerHTML = employmentHtml;
         }
 
-        // Show notification
-        function showNotification(message, type = 'success') {
-            // Remove existing notifications
-            const existing = document.querySelectorAll('.notification');
-            existing.forEach(notif => notif.remove());
-            
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.textContent = message;
-            
-            document.body.appendChild(notification);
-            
-            // Remove notification after 4 seconds
-            setTimeout(() => {
-                notification.style.opacity = '0';
-                notification.style.transform = 'translateX(100%)';
-                setTimeout(() => {
-                    if (notification.parentNode) {
-                        notification.parentNode.removeChild(notification);
-                    }
-                }, 300);
-            }, 4000);
-        }
+        console.log('✅ Dashboard & Charts Functions Loaded');
+<!-- الجزء السابع-->
+// ===============================
+        // Settings Management
+        // ===============================
 
-        // Check expiring contracts
-        function checkExpiringContracts() {
-            const today = new Date();
-            const thirtyDaysFromNow = new Date(today.getTime() + (30 * 24 * 60 * 60 * 1000));
-            
-            const expiringContracts = employees.filter(emp => {
-                if (!emp.endDate || emp.status !== 'active') return false;
-                const endDate = new Date(emp.endDate);
-                return endDate <= thirtyDaysFromNow && endDate >= today;
-            });
-            
-            if (expiringContracts.length > 0) {
-                const message = `Alert: ${expiringContracts.length} contract(s) expiring within 30 days`;
-                showNotification(message, 'warning');
+        // إدارة الأقسام
+        async function addDepartment() {
+            const newDept = safeString(document.getElementById('newDepartment').value);
+            if (!newDept) {
+                showNotification('Please enter a department name!', 'error');
+                return;
             }
-        }
+            
+            if (departments.includes(newDept)) {
+                showNotification('Department already exists!', 'error');
+                return;
+            }
 
-        // Auto-sync with Google Sheets every 5 minutes
-        setInterval(() => {
-            if (!isSyncing) {
-                syncWithSheets();
-            }
-        }, 300000); // 5 minutes
+            // إضافة القسم محلياً
+            departments.push(newDept);
+            updateAllDropdowns();
+            updateSettingsLists();
+            document.getElementById('newDepartment').value = '';
+            showNotification('Department added successfully!', 'success');
 
-        // Close form when clicking outside
-        document.getElementById('employeeForm').addEventListener('click', function(e) {
-            if (e.target === this) {
-                hideForm();
-            }
-        });
-
-        // Keyboard shortcuts
-        document.addEventListener('keydown', function(e) {
-            // Close form with Escape
-            if (e.key === 'Escape') {
-                hideForm();
-            }
-            
-            // Add new employee with Ctrl+N
-            if (e.ctrlKey && e.key === 'n') {
-                e.preventDefault();
-                showAddForm();
-            }
-            
-            // Export data with Ctrl+E
-            if (e.ctrlKey && e.key === 'e') {
-                e.preventDefault();
-                exportToExcel();
-            }
-            
-            // Sync with Google Sheets with Ctrl+R
-            if (e.ctrlKey && e.key === 'r') {
-                e.preventDefault();
-                syncWithSheets();
-            }
-            
-            // Save form with Ctrl+S
-            if (e.ctrlKey && e.key === 's') {
-                e.preventDefault();
-                const form = document.getElementById('employeeFormData');
-                if (form && document.getElementById('employeeForm').style.display === 'flex') {
-                    form.dispatchEvent(new Event('submit'));
+            // محاولة حفظ في Google Sheets (اختيارية)
+            if (sheetsUrl) {
+                try {
+                    await saveSettingsToSheets('department', newDept);
+                    console.log('Department saved to Google Sheets');
+                } catch (error) {
+                    console.log('Failed to save department to Google Sheets:', error);
                 }
             }
-        });
+        }
 
-        // Initialize contract expiry check after data loads
-        setTimeout(() => {
-            if (employees.length > 0) {
-                checkExpiringContracts();
+        function removeDepartment(dept) {
+            if (confirm('Are you sure you want to delete this department?')) {
+                const index = departments.indexOf(dept);
+                if (index > -1) {
+                    departments.splice(index, 1);
+                    updateAllDropdowns();
+                    updateSettingsLists();
+                    showNotification('Department deleted successfully!', 'success');
+                }
             }
-        }, 3000);
+        }
 
-        console.log('HR Management System with Google Sheets integration initialized successfully');
-        console.log('Available functions: syncWithSheets(), showAddForm(), exportToExcel()');
-        console.log('Keyboard shortcuts: Ctrl+N (Add), Ctrl+E (Export), Ctrl+R (Sync), Ctrl+S (Save)');
+        // إدارة المسميات الوظيفية
+        async function addJobTitle() {
+            const newTitle = safeString(document.getElementById('newJobTitle').value);
+            if (!newTitle) {
+                showNotification('Please enter a job title!', 'error');
+                return;
+            }
+            
+            if (jobTitles.includes(newTitle)) {
+                showNotification('Job title already exists!', 'error');
+                return;
+            }
+
+            // إضافة المسمى الوظيفي محلياً
+            jobTitles.push(newTitle);
+            updateAllDropdowns();
+            updateSettingsLists();
+            document.getElementById('newJobTitle').value = '';
+            showNotification('Job title added successfully!', 'success');
+
+            // محاولة حفظ في Google Sheets (اختيارية)
+            if (sheetsUrl) {
+                try {
+                    await saveSettingsToSheets('jobTitle', newTitle);
+                    console.log('Job title saved to Google Sheets');
+                } catch (error) {
+                    console.log('Failed to save job title to Google Sheets:', error);
+                }
+            }
+        }
+
+        function removeJobTitle(title) {
+            if (confirm('Are you sure you want to delete this job title?')) {
+                const index = jobTitles.indexOf(title);
+                if (index > -1) {
+                    jobTitles.splice(index, 1);
+                    updateAllDropdowns();
+                    updateSettingsLists();
+                    showNotification('Job title deleted successfully!', 'success');
+                }
+            }
+        }
+
+        // إدارة المواقع
+        async function addLocation() {
+            const newLocation = safeString(document.getElementById('newLocation').value);
+            if (!newLocation) {
+                showNotification('Please enter a location name!', 'error');
+                return;
+            }
+            
+            if (locations.includes(newLocation)) {
+                showNotification('Location already exists!', 'error');
+                return;
+            }
+
+            // إضافة الموقع محلياً
+            locations.push(newLocation);
+            updateSettingsLists();
+            document.getElementById('newLocation').value = '';
+            showNotification('Location added successfully!', 'success');
+
+            // محاولة حفظ في Google Sheets (اختيارية)
+            if (sheetsUrl) {
+                try {
+                    await saveSettingsToSheets('location', newLocation);
+                    console.log('Location saved to Google Sheets');
+                } catch (error) {
+                    console.log('Failed to save location to Google Sheets:', error);
+                }
+            }
+        }
+
+        function removeLocation(location) {
+            if (confirm('Are you sure you want to delete this location?')) {
+                const index = locations.indexOf(location);
+                if (index > -1) {
+                    locations.splice(index, 1);
+                    updateSettingsLists();
+                    showNotification('Location deleted successfully!', 'success');
+                }
+            }
+        }
+
+        // تحديث قوائم الإعدادات في الواجهة
+        function updateSettingsLists() {
+            // قائمة الأقسام
+            const deptList = document.getElementById('departmentsList');
+            if (deptList) {
+                deptList.innerHTML = '';
+                if (departments.length === 0) {
+                    deptList.innerHTML = '<p style="color: #718096; text-align: center; padding: 20px;">No departments added yet</p>';
+                } else {
+                    departments.forEach(dept => {
+                        const item = document.createElement('div');
+                        item.className = 'list-item';
+                        item.innerHTML = `
+                            <span style="flex: 1;">${dept}</span>
+                            <button class="btn btn-delete" onclick="removeDepartment('${dept.replace(/'/g, "\\'")}')">Delete</button>
+                        `;
+                        deptList.appendChild(item);
+                    });
+                }
+            }
+
+            // قائمة المسميات الوظيفية
+            const titlesList = document.getElementById('jobTitlesList');
+            if (titlesList) {
+                titlesList.innerHTML = '';
+                if (jobTitles.length === 0) {
+                    titlesList.innerHTML = '<p style="color: #718096; text-align: center; padding: 20px;">No job titles added yet</p>';
+                } else {
+                    jobTitles.forEach(title => {
+                        const item = document.createElement('div');
+                        item.className = 'list-item';
+                        item.innerHTML = `
+                            <span style="flex: 1;">${title}</span>
+                            <button class="btn btn-delete" onclick="removeJobTitle('${title.replace(/'/g, "\\'")}')">Delete</button>
+                        `;
+                        titlesList.appendChild(item);
+                    });
+                }
+            }
+
+            // قائمة المواقع
+            const locationsList = document.getElementById('locationsList');
+            if (locationsList) {
+                locationsList.innerHTML = '';
+                if (locations.length === 0) {
+                    locationsList.innerHTML = '<p style="color: #718096; text-align: center; padding: 20px;">No locations added yet</p>';
+                } else {
+                    locations.forEach(location => {
+                        const item = document.createElement('div');
+                        item.className = 'list-item';
+                        item.innerHTML = `
+                            <span style="flex: 1;">${location}</span>
+                            <button class="btn btn-delete" onclick="removeLocation('${location.replace(/'/g, "\\'")}')">Delete</button>
+                        `;
+                        locationsList.appendChild(item);
+                    });
+                }
+            }
+        }
+
+        // إعداد البيانات الافتراضية
+        function setupDefaultData() {
+            // إضافة أقسام افتراضية إذا لم تكن موجودة
+            const defaultDepartments = ['Human Resources', 'Information Technology', 'Finance', 'Marketing', 'Operations'];
+            defaultDepartments.forEach(dept => {
+                if (!departments.includes(dept)) {
+                    departments.push(dept);
+                }
+            });
+
+            // إضافة مسميات وظيفية افتراضية
+            const defaultJobTitles = ['Manager', 'Senior Developer', 'Developer', 'Analyst', 'Specialist', 'Coordinator'];
+            defaultJobTitles.forEach(title => {
+                if (!jobTitles.includes(title)) {
+                    jobTitles.push(title);
+                }
+            });
+
+            // إضافة مواقع افتراضية
+            const defaultLocations = ['Riyadh', 'Jeddah', 'Dammam', 'Remote'];
+            defaultLocations.forEach(location => {
+                if (!locations.includes(location)) {
+                    locations.push(location);
+                }
+            });
+
+            // تحديث الواجهة
+            updateAllDropdowns();
+            updateSettingsLists();
+        }
+
+        // تحميل البيانات الافتراضية عند بدء التشغيل
+        function initializeDefaultSettings() {
+            if (departments.length === 0 && jobTitles.length === 0 && locations.length === 0) {
+                setupDefaultData();
+                showNotification('Default settings loaded. You can modify them in the Settings tab.', 'info');
+            }
+        }
+
+        // استيراد الإعدادات من ملف JSON
+        function importSettings(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    if (data.departments && Array.isArray(data.departments)) {
+                        departments = [...new Set([...departments, ...data.departments])];
+                    }
+                    
+                    if (data.jobTitles && Array.isArray(data.jobTitles)) {
+                        jobTitles = [...new Set([...jobTitles, ...data.jobTitles])];
+                    }
+                    
+                    if (data.locations && Array.isArray(data.locations)) {
+                        locations = [...new Set([...locations, ...data.locations])];
+                    }
+                    
+                    updateAllDropdowns();
+                    updateSettingsLists();
+                    showNotification('Settings imported successfully!', 'success');
+                } catch (error) {
+                    showNotification('Error reading settings file. Please check the format.', 'error');
+                }
+            };
+            
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        // تصدير الإعدادات إلى ملف JSON
+        function exportSettings() {
+            const settings = {
+                departments: departments,
+                jobTitles: jobTitles,
+                locations: locations,
+                exportDate: new Date().toISOString()
+            };
+
+            const blob = new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `hr-settings-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showNotification('Settings exported successfully!', 'success');
+        }
+
+        // إعادة تعيين الإعدادات
+        function resetSettings() {
+            if (confirm('Are you sure you want to reset all settings to default? This will remove all custom departments, job titles, and locations.')) {
+                departments.length = 0;
+                jobTitles.length = 0;
+                locations.length = 0;
+                
+                setupDefaultData();
+                showNotification('Settings reset to default successfully!', 'success');
+            }
+        }
+
+        // البحث في الإعدادات
+        function searchInSettings(searchTerm, listType) {
+            const listId = listType + 'List';
+            const items = document.querySelectorAll(`#${listId} .list-item`);
+            
+            items.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                if (text.includes(searchTerm.toLowerCase())) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        // تشغيل الإعدادات الافتراضية عند التحميل
+        setTimeout(() => {
+            initializeDefaultSettings();
+        }, 1000);
+
+        console.log('✅ Settings Management Functions Loaded');
+    <!--الجزء الثامن-->
+    // ===============================
+        // Import/Export Functions
+        // ===============================
+
+        // استيراد البيانات من ملف Excel
+        function importFromExcel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                    if (jsonData.length === 0) {
+                        showNotification('File is empty or contains no valid data!', 'error');
+                        return;
+                    }
+
+                    // تحويل البيانات إلى التنسيق المطلوب مع معالجة آمنة
+                    const importedEmployees = jsonData.map((row, index) => {
+                        try {
+                            // إنشاء ID تلقائي إذا لم يكن موجود
+                            let employeeId = safeString(safeGet(row, 'ID', 'id', 'Employee ID'));
+                            if (!employeeId) {
+                                employeeId = (200000 + index).toString();
+                            }
+
+                            return {
+                                name: safeString(safeGet(row, 'Name', 'name')),
+                                id: employeeId,
+                                email: safeString(safeGet(row, 'Email', 'email')),
+                                department: safeString(safeGet(row, 'Department', 'department')),
+                                jobTitle: safeString(safeGet(row, 'Job Title', 'Job title', 'jobTitle')),
+                                location: safeString(safeGet(row, 'Location', 'location')),
+                                nationality: safeString(safeGet(row, 'Nationality', 'nationality')),
+                                status: safeString(safeGet(row, 'Status', 'status')) || 'active',
+                                startDate: safeString(safeGet(row, 'Start Date', 'startDate')),
+                                endDate: safeString(safeGet(row, 'End Date', 'endDate')),
+                                notes: safeString(safeGet(row, 'Notes', 'notes'))
+                            };
+                        } catch (rowError) {
+                            console.error(`Error processing import row ${index}:`, rowError);
+                            return null;
+                        }
+                    }).filter(emp => emp && emp.name); // تصفية الصفوف الفارغة
+
+                    if (importedEmployees.length === 0) {
+                        showNotification('No valid employee data found in the file!', 'error');
+                        return;
+                    }
+
+                    // عرض معاينة للمستخدم
+                    showImportPreview(importedEmployees);
+
+                } catch (error) {
+                    console.error('Error importing file:', error);
+                    showNotification('Error reading file. Make sure it\'s a valid Excel file.', 'error');
+                }
+            };
+            
+            reader.readAsArrayBuffer(file);
+            event.target.value = ''; // إعادة تعيين input
+        }
+
+        // عرض معاينة البيانات المستوردة
+        function showImportPreview(importedData) {
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.7);
+                z-index: 10000;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                padding: 20px;
+            `;
+            
+            // إنشاء جدول معاينة
+            let previewTable = '<table style="width: 100%; border-collapse: collapse; margin: 20px 0;"><thead><tr style="background: #f7fafc;">';
+            previewTable += '<th style="padding: 10px; border: 1px solid #e2e8f0;">Name</th>';
+            previewTable += '<th style="padding: 10px; border: 1px solid #e2e8f0;">ID</th>';
+            previewTable += '<th style="padding: 10px; border: 1px solid #e2e8f0;">Department</th>';
+            previewTable += '<th style="padding: 10px; border: 1px solid #e2e8f0;">Job Title</th>';
+            previewTable += '<th style="padding: 10px; border: 1px solid #e2e8f0;">Status</th>';
+            previewTable += '</tr></thead><tbody>';
+            
+            // عرض أول 5 صفوف فقط للمعاينة
+            importedData.slice(0, 5).forEach(emp => {
+                previewTable += '<tr>';
+                previewTable += `<td style="padding: 8px; border: 1px solid #e2e8f0;">${emp.name}</td>`;
+                previewTable += `<td style="padding: 8px; border: 1px solid #e2e8f0;">${emp.id}</td>`;
+                previewTable += `<td style="padding: 8px; border: 1px solid #e2e8f0;">${emp.department}</td>`;
+                previewTable += `<td style="padding: 8px; border: 1px solid #e2e8f0;">${emp.jobTitle}</td>`;
+                previewTable += `<td style="padding: 8px; border: 1px solid #e2e8f0;">${emp.status}</td>`;
+                previewTable += '</tr>';
+            });
+            previewTable += '</tbody></table>';
+            
+            modal.innerHTML = `
+                <div style="
+                    background: white;
+                    border-radius: 15px;
+                    padding: 30px;
+                    max-width: 90%;
+                    max-height: 90%;
+                    overflow: auto;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                ">
+                    <h2 style="margin-bottom: 20px; color: #4a5568;">📊 Import Preview</h2>
+                    <p style="margin-bottom: 20px; color: #718096;">
+                        Found <strong>${importedData.length}</strong> employees. Preview of first 5 records:
+                    </p>
+                    ${previewTable}
+                    ${importedData.length > 5 ? `<p style="color: #718096; font-style: italic;">... and ${importedData.length - 5} more records</p>` : ''}
+                    
+                    <div style="margin-top: 30px; display: flex; gap: 10px; justify-content: flex-end;">
+                        <button onclick="closeImportPreview()" style="
+                            background: #e2e8f0;
+                            color: #4a5568;
+                            padding: 12px 24px;
+                            border: none;
+                            border-radius: 8px;
+                            cursor: pointer;
+                            font-weight: 600;
+                        ">Cancel</button>
+                        <button onclick="confirmImport()" style="
+                            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+                            color: white;
+                            padding: 12px 24px;
+                            border: none;
+                            border-radius: 8px;
+                            cursor: pointer;
+                            font-weight: 600;
+                        ">✅ Import ${importedData.length} Employees</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // حفظ البيانات للاستخدام عند التأكيد
+            window.pendingImportData = importedData;
+        }
+
+        // تأكيد الاستيراد
+        function confirmImport() {
+            if (!window.pendingImportData) return;
+            
+            const importedEmployees = window.pendingImportData;
+            
+            // إضافة الموظفين المستوردين
+            employees = [...employees, ...importedEmployees];
+            
+            // تحديث الإعدادات
+            const newDepartments = [...new Set(importedEmployees.map(emp => emp.department))].filter(d => d);
+            const newJobTitles = [...new Set(importedEmployees.map(emp => emp.jobTitle))].filter(j => j);
+            const newLocations = [...new Set(importedEmployees.map(emp => emp.location))].filter(l => l);
+            
+            departments = [...new Set([...departments, ...newDepartments])];
+            jobTitles = [...new Set([...jobTitles, ...newJobTitles])];
+            locations = [...new Set([...locations, ...newLocations])];
+            
+            // تحديث الواجهة
+            updateAllDropdowns();
+            updateSettingsLists();
+            updateInterface();
+            
+            closeImportPreview();
+            showNotification(`Successfully imported ${importedEmployees.length} employees!`, 'success');
+            
+            // تنظيف البيانات المؤقتة
+            delete window.pendingImportData;
+        }
+
+        // إغلاق معاينة الاستيراد
+        function closeImportPreview() {
+            const modal = document.querySelector('div[style*="position: fixed"][style*="z-index: 10000"]');
+            if (modal) {
+                document.body.removeChild(modal);
+            }
+            delete window.pendingImportData;
+        }
+
+        // تصدير جميع البيانات إلى Excel
+        function exportToExcel() {
+            if (employees.length === 0) {
+                showNotification('No data to export!', 'error');
+                return;
+            }
+
+            // إعداد البيانات للتصدير
+            const exportData = employees.map(emp => ({
+                'Employee ID': emp.id,
+                'Name': emp.name,
+                'Email': emp.email,
+                'Department': emp.department,
+                'Job Title': emp.jobTitle,
+                'Location': emp.location,
+                'Nationality': emp.nationality,
+                'Start Date': emp.startDate ? formatDate(emp.startDate) : '',
+                'End Date': emp.endDate ? formatDate(emp.endDate) : '',
+                'Status': emp.status === 'active' ? 'Active' : 'Inactive',
+                'Notes': emp.notes
+            }));
+
+            // إنشاء ورقة العمل
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            
+            // تحسين عرض الأعمدة
+            const colWidths = [
+                { wch: 12 }, // Employee ID
+                { wch: 20 }, // Name
+                { wch: 25 }, // Email
+                { wch: 20 }, // Department
+                { wch: 20 }, // Job Title
+                { wch: 15 }, // Location
+                { wch: 12 }, // Nationality
+                { wch: 18 }, // Start Date
+                { wch: 18 }, // End Date
+                { wch: 12 }, // Status
+                { wch: 30 }  // Notes
+            ];
+            ws['!cols'] = colWidths;
+
+            // إنشاء كتاب العمل
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Employee Data');
+            
+            // إضافة ورقة الإحصائيات
+            const statsData = [
+                ['Statistic', 'Count'],
+                ['Total Employees', employees.length],
+                ['Active Employees', employees.filter(emp => emp.status === 'active').length],
+                ['Inactive Employees', employees.filter(emp => emp.status === 'inactive').length],
+                ['Saudi Employees', employees.filter(emp => emp.nationality === 'Saudi').length],
+                ['Non-Saudi Employees', employees.filter(emp => emp.nationality === 'Non-Saudi').length],
+                ['Departments', [...new Set(employees.map(emp => emp.department))].filter(d => d).length],
+                ['Job Titles', [...new Set(employees.map(emp => emp.jobTitle))].filter(j => j).length],
+                ['Locations', [...new Set(employees.map(emp => emp.location))].filter(l => l).length],
+                ['Export Date', new Date().toLocaleString()]
+            ];
+            
+            const statsWs = XLSX.utils.aoa_to_sheet(statsData);
+            statsWs['!cols'] = [{ wch: 20 }, { wch: 15 }];
+            XLSX.utils.book_append_sheet(wb, statsWs, 'Statistics');
+
+            // تحميل الملف
+            const fileName = `employee_data_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            
+            showNotification('Data exported successfully!', 'success');
+        }
+
+        // تصدير الموظفين النشطين فقط
+        function exportActiveEmployees() {
+            const activeEmployees = employees.filter(emp => emp.status === 'active');
+            
+            if (activeEmployees.length === 0) {
+                showNotification('No active employees to export!', 'error');
+                return;
+            }
+
+            const exportData = activeEmployees.map(emp => ({
+                'Employee ID': emp.id,
+                'Name': emp.name,
+                'Email': emp.email,
+                'Department': emp.department,
+                'Job Title': emp.jobTitle,
+                'Location': emp.location,
+                'Nationality': emp.nationality,
+                'Start Date': emp.startDate ? formatDate(emp.startDate) : '',
+                'End Date': emp.endDate ? formatDate(emp.endDate) : '',
+                'Notes': emp.notes
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            ws['!cols'] = [
+                { wch: 12 }, { wch: 20 }, { wch: 25 }, { wch: 20 },
+                { wch: 20 }, { wch: 15 }, { wch: 12 }, { wch: 18 }, 
+                { wch: 18 }, { wch: 30 }
+            ];
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Active Employees');
+
+            const fileName = `active_employees_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            
+            showNotification('Active employees exported successfully!', 'success');
+        }
+
+        // تصدير قالب فارغ للاستيراد
+        function exportTemplate() {
+            const templateData = [{
+                'Name': 'John Doe',
+                'ID': '12345',
+                'Email': 'john.doe@company.com',
+                'Department': 'Information Technology',
+                'Job Title': 'Senior Developer',
+                'Location': 'Riyadh',
+                'Nationality': 'Saudi',
+                'Start Date': '2023-01-15',
+                'End Date': '',
+                'Status': 'Active',
+                'Notes': 'Sample employee record'
+            }];
+
+            const ws = XLSX.utils.json_to_sheet(templateData);
+            ws['!cols'] = [
+                { wch: 20 }, { wch: 12 }, { wch: 25 }, { wch: 20 },
+                { wch: 20 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, 
+                { wch: 15 }, { wch: 12 }, { wch: 30 }
+            ];
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'HR Template');
+
+            XLSX.writeFile(wb, 'hr_import_template.xlsx');
+            showNotification('Import template downloaded successfully!', 'success');
+        }
+
+        // تصدير تقرير مفصل
+        function exportDetailedReport() {
+            if (employees.length === 0) {
+                showNotification('No data to export!', 'error');
+                return;
+            }
+
+            const wb = XLSX.utils.book_new();
+
+            // ورقة البيانات الأساسية
+            const mainData = employees.map(emp => ({
+                'ID': emp.id,
+                'Name': emp.name,
+                'Email': emp.email,
+                'Department': emp.department,
+                'Job Title': emp.jobTitle,
+                'Location': emp.location,
+                'Nationality': emp.nationality,
+                'Status': emp.status,
+                'Start Date': emp.startDate,
+                'End Date': emp.endDate,
+                'Notes': emp.notes
+            }));
+            const mainWs = XLSX.utils.json_to_sheet(mainData);
+            XLSX.utils.book_append_sheet(wb, mainWs, 'All Employees');
+
+            // ورقة الموظفين النشطين
+            const activeData = employees.filter(emp => emp.status === 'active').map(emp => ({
+                'ID': emp.id,
+                'Name': emp.name,
+                'Department': emp.department,
+                'Job Title': emp.jobTitle,
+                'Start Date': emp.startDate
+            }));
+            if (activeData.length > 0) {
+                const activeWs = XLSX.utils.json_to_sheet(activeData);
+                XLSX.utils.book_append_sheet(wb, activeWs, 'Active Employees');
+            }
+
+            // ورقة إحصائيات الأقسام
+            const deptStats = Object.entries(
+                employees.reduce((acc, emp) => {
+                    if (emp.department) {
+                        acc[emp.department] = (acc[emp.department] || 0) + 1;
+                    }
+                    return acc;
+                }, {})
+            ).map(([dept, count]) => ({
+                'Department': dept,
+                'Employee Count': count,
+                'Percentage': ((count / employees.length) * 100).toFixed(1) + '%'
+            }));
+            const deptWs = XLSX.utils.json_to_sheet(deptStats);
+            XLSX.utils.book_append_sheet(wb, deptWs, 'Department Stats');
+
+            const fileName = `hr_detailed_report_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            
+            showNotification('Detailed report exported successfully!', 'success');
+        }
+
+        // إضافة أزرار التصدير الإضافية (سيتم استدعاؤها من الواجهة)
+        function addExportButtons() {
+            const exportCard = document.querySelector('#import-export .settings-card:last-child .action-buttons');
+            if (exportCard && !exportCard.querySelector('.btn-template')) {
+                exportCard.innerHTML += `
+                    <button class="action-btn btn-template btn-info" onclick="exportTemplate()">
+                        📄 Download Template
+                    </button>
+                    <button class="action-btn btn-detailed btn-primary" onclick="exportDetailedReport()">
+                        📋 Detailed Report
+                    </button>
+                `;
+            }
+        }
+
+        // تشغيل إضافة الأزرار عند تحميل الصفحة
+        setTimeout(addExportButtons, 2000);
+
+        console.log('✅ Import/Export Functions Loaded');
+        console.log('📊 Available export options: All Data, Active Only, Template, Detailed Report');
+        console.log('📁 Supported import format: Excel (.xlsx, .xls)');
+        
+        // إضافة معلومات النظام للوحة التحكم
+        console.log('🚀 HR Management System - Fully Loaded!');
+        console.log('📋 Features: Employee Management, Google Sheets Sync, Charts, Import/Export');
+        console.log('🔧 Shortcuts: Ctrl+N (Add), Ctrl+E (Export), Ctrl+R (Sync), Ctrl+S (Save)');
+
     </script>
 </body>
 </html>
