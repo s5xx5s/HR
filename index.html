@@ -794,7 +794,7 @@
         let jobTitles = [];
         let locations = [];
         let dynamicFields = {}; // Store dynamic field definitions
-        let editingIndex = -1;;
+        let editingIndex = -1;
         let charts = {};
         let sheetsUrl = 'https://script.google.com/macros/s/AKfycbzssMRrZCJfV0Pknrs5h-WdzSCeXkzZphWDP3XV6Au3ngeaxq50V8AKXwDVs-aJvWgG4w/exec';
         let isSyncing = false;
@@ -1059,19 +1059,7 @@
         }
 
         // Initialize application
-        document.addEventListener('DOMContentLoaded', function() {
-            // تهيئة نظام إدارة الرابط
-            setTimeout(() => {
-                initializeUrlSystem();
-                addUrlStatusToInterface();
-                addResetButton();
-                updateUrlStatusDisplay();
-            }, 1000);
-            
-            // تحديث واجهة المستخدم
-            updateSyncStatus('loading', '🔄 Connecting to Google Sheets...');
-            loadFromGoogleSheets();
-        });
+        
 
         // Update sync status
         function updateSyncStatus(type, message) {
@@ -1533,7 +1521,9 @@
         }
 
         // Show tabs
+        // Show tabs
         function showTab(tabName) {
+            // إزالة active من جميع التبويبات
             document.querySelectorAll('.tab-content').forEach(tab => {
                 tab.classList.remove('active');
             });
@@ -1541,21 +1531,51 @@
                 tab.classList.remove('active');
             });
             
-            document.getElementById(tabName).classList.add('active');
-            event.target.classList.add('active');
+            // إضافة active للتبويب المحدد
+            const selectedTab = document.getElementById(tabName);
+            const clickedButton = event.target;
             
+            if (selectedTab) {
+                selectedTab.classList.add('active');
+            }
+            
+            if (clickedButton) {
+                clickedButton.classList.add('active');
+            }
+            
+            // تحديث الواجهة حسب التبويب المختار
             updateInterface();
         }
 
         // Update interface based on data availability
+        // Update interface based on data availability
         function updateInterface() {
+            const activeTab = document.querySelector('.tab-content.active');
+            if (!activeTab) return;
+            
+            const tabId = activeTab.id;
+            
             if (employees.length === 0) {
                 showEmptyStates();
             } else {
                 showDataContent();
-                updateDashboard();
-                loadEmployeeTable();
-                loadReports();
+                
+                // تحديث المحتوى حسب التبويب النشط
+                switch(tabId) {
+                    case 'dashboard':
+                        updateDashboard();
+                        break;
+                    case 'employees':
+                        loadEmployeeTable();
+                        break;
+                    case 'reports':
+                        loadReports();
+                        break;
+                    case 'settings':
+                        updateSettingsLists();
+                        updateDynamicFieldsList();
+                        break;
+                }
             }
         }
 
@@ -2675,75 +2695,95 @@
         }
 
         // إصلاح معالج نموذج الموظف
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('employeeFormData').addEventListener('submit', async function(event) {
-                // منع السلوك الافتراضي للنموذج (تحديث الصفحة)
-                event.preventDefault();
-                
-                // جمع بيانات الموظف من النموذج
-                const employeeData = {
-                    name: document.getElementById('employeeName').value.trim(),
-                    id: document.getElementById('employeeId').value.trim() || generateEmployeeId(),
-                    email: document.getElementById('employeeEmail').value.trim(),
-                    department: document.getElementById('employeeDepartment').value,
-                    jobTitle: document.getElementById('employeeJobTitle').value,
-                    location: document.getElementById('employeeLocation').value.trim(),
-                    nationality: document.getElementById('employeeNationality').value,
-                    startDate: document.getElementById('employeeStartDate').value,
-                    endDate: document.getElementById('employeeEndDate').value,
-                    status: document.getElementById('employeeStatus').value,
-                    notes: document.getElementById('employeeNotes').value.trim()
-                };
-                
-                // جمع البيانات الديناميكية
-                Object.keys(dynamicFields).forEach(fieldKey => {
-                    const input = document.getElementById(`dynamic_${fieldKey}`);
-                    if (input) {
-                        employeeData[fieldKey] = input.value.trim();
-                    }
-                });
-                
-                // التحقق من البيانات الإلزامية
-                if (!employeeData.name) {
-                    showNotification('Employee name is required', 'error');
-                    return;
-                }
-                
-                if (!employeeData.department) {
-                    showNotification('Department is required', 'error');
-                    return;
-                }
-                
-                if (!employeeData.jobTitle) {
-                    showNotification('Job title is required', 'error');
-                    return;
-                }
-                
-                // تحديد ما إذا كانت عملية إضافة أو تحديث
-                const isUpdate = editingIndex >= 0;
-                
-                // حفظ البيانات في Google Sheets
-                const saveSuccess = await saveToGoogleSheets(employeeData, isUpdate);
-                
-                if (saveSuccess) {
-                    if (isUpdate) {
-                        // تحديث البيانات في المصفوفة المحلية
-                        employees[editingIndex] = employeeData;
-                        showNotification(`Employee "${employeeData.name}" updated successfully`, 'success');
-                    } else {
-                        // إضافة الموظف الجديد إلى المصفوفة المحلية
-                        employees.push(employeeData);
-                        showNotification(`Employee "${employeeData.name}" added successfully`, 'success');
-                    }
-                    
-                    // إخفاء النموذج
-                    hideForm();
-                    
-                    // تحديث واجهة المستخدم
-                    updateInterface();
-                }
-            });
-        });
+       document.addEventListener('DOMContentLoaded', function() {
+           console.log('🚀 HR System Starting...');
+           
+           // تهيئة النظام
+           try {
+               updateSyncStatus('loading', '🔄 Connecting to Google Sheets...');
+               
+               // تحميل البيانات بعد ثانية واحدة
+               setTimeout(() => {
+                   loadFromGoogleSheets();
+               }, 1000);
+               
+           } catch (error) {
+               console.error('❌ Initialization error:', error);
+               updateSyncStatus('error', '❌ Failed to initialize system');
+           }
+           
+           // معالج نموذج الموظف
+           const employeeForm = document.getElementById('employeeFormData');
+           if (employeeForm) {
+               employeeForm.addEventListener('submit', async function(event) {
+                   // منع السلوك الافتراضي للنموذج (تحديث الصفحة)
+                   event.preventDefault();
+                   
+                   // جمع بيانات الموظف من النموذج
+                   const employeeData = {
+                       name: document.getElementById('employeeName').value.trim(),
+                       id: document.getElementById('employeeId').value.trim() || generateEmployeeId(),
+                       email: document.getElementById('employeeEmail').value.trim(),
+                       department: document.getElementById('employeeDepartment').value,
+                       jobTitle: document.getElementById('employeeJobTitle').value,
+                       location: document.getElementById('employeeLocation').value.trim(),
+                       nationality: document.getElementById('employeeNationality').value,
+                       startDate: document.getElementById('employeeStartDate').value,
+                       endDate: document.getElementById('employeeEndDate').value,
+                       status: document.getElementById('employeeStatus').value,
+                       notes: document.getElementById('employeeNotes').value.trim()
+                   };
+                   
+                   // جمع البيانات الديناميكية
+                   Object.keys(dynamicFields).forEach(fieldKey => {
+                       const input = document.getElementById(`dynamic_${fieldKey}`);
+                       if (input) {
+                           employeeData[fieldKey] = input.value.trim();
+                       }
+                   });
+                   
+                   // التحقق من البيانات الإلزامية
+                   if (!employeeData.name) {
+                       showNotification('Employee name is required', 'error');
+                       return;
+                   }
+                   
+                   if (!employeeData.department) {
+                       showNotification('Department is required', 'error');
+                       return;
+                   }
+                   
+                   if (!employeeData.jobTitle) {
+                       showNotification('Job title is required', 'error');
+                       return;
+                   }
+                   
+                   // تحديد ما إذا كانت عملية إضافة أو تحديث
+                   const isUpdate = editingIndex >= 0;
+                   
+                   // حفظ البيانات في Google Sheets
+                   const saveSuccess = await saveToGoogleSheets(employeeData, isUpdate);
+                   
+                   if (saveSuccess) {
+                       if (isUpdate) {
+                           // تحديث البيانات في المصفوفة المحلية
+                           employees[editingIndex] = employeeData;
+                           showNotification(`Employee "${employeeData.name}" updated successfully`, 'success');
+                       } else {
+                           // إضافة الموظف الجديد إلى المصفوفة المحلية
+                           employees.push(employeeData);
+                           showNotification(`Employee "${employeeData.name}" added successfully`, 'success');
+                       }
+                       
+                       // إخفاء النموذج
+                       hideForm();
+                       
+                       // تحديث واجهة المستخدم
+                       updateInterface();
+                   }
+               });
+           }
+       });
 
         // مزامنة تلقائية كل 5 دقائق
         setInterval(() => {
