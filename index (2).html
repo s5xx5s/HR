@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام إدارة الموارد البشرية</title>
+    
+    <!-- Bootstrap RTL -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts - Tajawal -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background-color: #f8f9fa;
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+        }
+        
+        .sidebar {
+            min-height: calc(100vh - 56px);
+            background-color: #343a40;
+            color: #fff;
+        }
+        
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.75);
+        }
+        
+        .sidebar .nav-link:hover {
+            color: #fff;
+        }
+        
+        .sidebar .nav-link.active {
+            color: #fff;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .card {
+            border-radius: 0.5rem;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        }
+        
+        .stat-card {
+            transition: transform 0.3s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .chart-container {
+            height: 300px;
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+        
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay d-none">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">جاري التحميل...</span>
+        </div>
+    </div>
+    
+    <!-- Toast Container -->
+    <div class="toast-container"></div>
+    
+    <!-- Login Modal -->
+    <div class="modal fade" id="loginModal" tabindex="-1" aria-labelledby="loginModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="loginModalLabel">تسجيل الدخول</h5>
+                </div>
+                <div class="modal-body">
+                    <form id="loginForm">
+                        <div class="mb-3">
+                            <label for="username" class="form-label">اسم المستخدم</label>
+                            <input type="text" class="form-control" id="username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="password" class="form-label">كلمة المرور</label>
+                            <input type="password" class="form-control" id="password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="scriptUrlInput" class="form-label">رابط Google Apps Script</label>
+                            <input type="text" class="form-control" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec">
+                            <div class="form-text">أدخل رابط Google Apps Script الخاص بك للاتصال بـ Google Sheets</div>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">تسجيل الدخول</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div id="mainContent" class="d-none">
+        <!-- Navbar -->
+        <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="#">نظام إدارة الموارد البشرية</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav me-auto">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#" data-bs-target="#dashboardTab">لوحة المعلومات</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-bs-target="#employeesTab">الموظفين</a>
+                        </li>
+                        <li class="nav-item admin-only">
+                            <a class="nav-link" href="#" data-bs-target="#settingsTab">الإعدادات</a>
+                        </li>
+                    </ul>
+                    <div class="d-flex">
+                        <span class="navbar-text me-3">
+                            مرحباً، <span id="userDisplayName">المستخدم</span>
+                        </span>
+                        <button class="btn btn-outline-light btn-sm" onclick="HR.logout()">تسجيل الخروج</button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        
+        <!-- Content -->
+        <div class="container-fluid mt-4">
+            <div class="tab-content">
+                <!-- Dashboard Tab -->
+                <div class="tab-pane fade show active" id="dashboardTab">
+                    <h2 class="mb-4">لوحة المعلومات</h2>
+                    <div id="dashboardContainer"></div>
+                </div>
+                
+                <!-- Employees Tab -->
+                <div class="tab-pane fade" id="employeesTab">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h2>الموظفين</h2>
+                        <button class="btn btn-primary admin-only" onclick="HR.openEmployeeForm('add')">
+                            <i class="fas fa-plus"></i> إضافة موظف
+                        </button>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table id="employeeTable" class="table table-striped table-hover">
+                                    <thead>
+                                        <tr>
+                                            <!-- سيتم إنشاء رأس الجدول ديناميكياً -->
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- سيتم إنشاء صفوف الجدول ديناميكياً -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Settings Tab -->
+                <div class="tab-pane fade" id="settingsTab">
+                    <h2 class="mb-4">الإعدادات</h2>
+                    
+                    <ul class="nav nav-tabs mb-4">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#sheetsUrlTab" data-bs-toggle="tab">رابط Google Sheets</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#referenceDataTab" data-bs-toggle="tab">البيانات المرجعية</a>
+                        </li>
+                    </ul>
+                    
+                    <div class="tab-content">
+                        <!-- Google Sheets URL Tab -->
+                        <div class="tab-pane fade show active" id="sheetsUrlTab">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">تعيين رابط Google Apps Script</h5>
+                                    <div class="mb-3">
+                                        <label for="scriptUrlSettingsInput" class="form-label">رابط Google Apps Script</label>
+                                        <input type="text" class="form-control" id="scriptUrlSettingsInput" placeholder="https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec">
+                                    </div>
+                                    <button class="btn btn-primary" onclick="HR.updateScriptUrl()">حفظ الرابط</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Reference Data Tab -->
+                        <div class="tab-pane fade" id="referenceDataTab">
+                            <div class="row">
+                                <!-- Departments -->
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h5 class="card-title mb-0">الأقسام</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="mb-3">
+                                                <div class="input-group">
+                                                    <input type="text" class="form-control" id="departmentInput" placeholder="اسم القسم">
+                                                    <button class="btn btn-primary" onclick="HR.addReferenceItem('departments', document.getElementById('departmentInput').value)">إضافة</button>
+                                                </div>
+                                            </div>
+                                            <ul class="list-group" id="departmentsList">
+                                                <!-- سيتم إنشاء العناصر ديناميكياً -->
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Job Titles -->
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h5 class="card-title mb-0">المسميات الوظيفية</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="mb-3">
+                                                <div class="input-group">
+                                                    <input type="text" class="form-control" id="jobTitleInput" placeholder="المسمى الوظيفي">
+                                                    <button class="btn btn-primary" onclick="HR.addReferenceItem('jobTitles', document.getElementById('jobTitleInput').value)">إضافة</button>
+                                                </div>
+                                            </div>
+                                            <ul class="list-group" id="jobTitlesList">
+                                                <!-- سيتم إنشاء العناصر ديناميكياً -->
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Locations -->
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h5 class="card-title mb-0">المواقع</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="mb-3">
+                                                <div class="input-group">
+                                                    <input type="text" class="form-control" id="locationInput" placeholder="اسم الموقع">
+                                                    <button class="btn btn-primary" onclick="HR.addReferenceItem('locations', document.getElementById('locationInput').value)">إضافة</button>
+                                                </div>
+                                            </div>
+                                            <ul class="list-group" id="locationsList">
+                                                <!-- سيتم إنشاء العناصر ديناميكياً -->
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- HR System JS -->
+    <script src="hr_system_cloud.js"></script>
+    <script src="authentication_system.js"></script>
+    <script src="dynamic_data_parser.js"></script>
+    <script src="dynamic_ui_renderer.js"></script>
+    <script src="dynamic_forms.js"></script>
+    <script src="dynamic_statistics.js"></script>
+    <script src="secure_sheets.js"></script>
+    <script src="system_integration.js"></script>
+    
+    <script>
+        // تهيئة النظام عند تحميل الصفحة
+        document.addEventListener('DOMContentLoaded', function() {
+            HR.init();
+        });
+    </script>
+</body>
+</html>
