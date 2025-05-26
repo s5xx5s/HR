@@ -1289,13 +1289,30 @@
         // Save employee to Google Sheets using both methods
         async function saveToGoogleSheets(employeeData, isUpdate = false) {
             try {
-                updateSyncStatus('loading', '🔄 Saving to Google Sheets...');
+                console.log('Saving employee data:', {
+                    name: employeeData.name,
+                    id: employeeData.id,
+                    isUpdate: isUpdate,
+                    editingIndex: editingIndex
+                });
                 
+                updateSyncStatus('loading', '🔄 Saving to Google Sheets...');
+                if (!employeeData.name || !employeeData.id) {
+                    throw new Error('Employee name and ID are required');
+                }
+                
+                // Build query parameters for GET request
                 // Build query parameters for GET request
                 const params = new URLSearchParams();
                 params.append('action', isUpdate ? 'update' : 'add');
                 params.append('name', employeeData.name || '');
                 params.append('id', employeeData.id || '');
+                
+                // إضافة معرف الموظف الأصلي للتحديث
+                if (isUpdate && editingIndex >= 0) {
+                    params.append('originalId', employees[editingIndex].id);
+                    console.log('Updating employee with original ID:', employees[editingIndex].id);
+                }
                 params.append('email', employeeData.email || '');
                 params.append('department', employeeData.department || '');
                 params.append('jobTitle', employeeData.jobTitle || '');
@@ -2271,21 +2288,29 @@
         }
 
         // Show edit employee form
+        // Show edit employee form
         function showEditForm(index) {
             const employee = employees[index];
             
+            if (!employee) {
+                showNotification('Employee not found', 'error');
+                return;
+            }
+            
+            console.log('Editing employee:', employee.name, 'with ID:', employee.id);
+            
             document.getElementById('formTitle').textContent = 'Edit Employee';
-            document.getElementById('employeeName').value = employee.name;
-            document.getElementById('employeeId').value = employee.id;
-            document.getElementById('employeeEmail').value = employee.email;
-            document.getElementById('employeeDepartment').value = employee.department;
-            document.getElementById('employeeJobTitle').value = employee.jobTitle;
-            document.getElementById('employeeLocation').value = employee.location;
-            document.getElementById('employeeNationality').value = employee.nationality;
-            document.getElementById('employeeStartDate').value = employee.startDate;
-            document.getElementById('employeeEndDate').value = employee.endDate;
-            document.getElementById('employeeStatus').value = employee.status;
-           document.getElementById('employeeNotes').value = employee.notes;
+            document.getElementById('employeeName').value = employee.name || '';
+            document.getElementById('employeeId').value = employee.id || '';
+            document.getElementById('employeeEmail').value = employee.email || '';
+            document.getElementById('employeeDepartment').value = employee.department || '';
+            document.getElementById('employeeJobTitle').value = employee.jobTitle || '';
+            document.getElementById('employeeLocation').value = employee.location || '';
+            document.getElementById('employeeNationality').value = employee.nationality || '';
+            document.getElementById('employeeStartDate').value = employee.startDate || '';
+            document.getElementById('employeeEndDate').value = employee.endDate || '';
+            document.getElementById('employeeStatus').value = employee.status || 'active';
+            document.getElementById('employeeNotes').value = employee.notes || '';
             
             // Fill dynamic fields
             Object.keys(dynamicFields).forEach(fieldKey => {
@@ -2761,6 +2786,12 @@
                    
                    // تحديد ما إذا كانت عملية إضافة أو تحديث
                    const isUpdate = editingIndex >= 0;
+                   
+                   console.log('Form submission:', {
+                       isUpdate: isUpdate,
+                       editingIndex: editingIndex,
+                       employeeData: employeeData
+                   });
                    
                    // حفظ البيانات في Google Sheets
                    const saveSuccess = await saveToGoogleSheets(employeeData, isUpdate);
