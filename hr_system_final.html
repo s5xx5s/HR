@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام إدارة الموارد البشرية المتقدم</title>
+    
+    <!-- Bootstrap RTL -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts - Tajawal -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- CryptoJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background-color: #f8f9fa;
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+        }
+        
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            transition: transform 0.3s;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .btn-icon {
+            margin-right: 5px;
+        }
+        
+        .table th {
+            font-weight: 600;
+        }
+        
+        .dashboard-card {
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .dashboard-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+        
+        .dashboard-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        
+        .dashboard-label {
+            font-size: 1rem;
+            color: #6c757d;
+        }
+        
+        .reference-data-section {
+            background-color: #f1f8ff;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .reference-data-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        .reference-data-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .reference-data-item:last-child {
+            border-bottom: none;
+        }
+        
+        .loading-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            color: white;
+        }
+        
+        .alert-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 400px;
+        }
+        
+        #employeeFormContainer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9998;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        #employeeFormContainer form {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            width: 100%;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .login-logo {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .login-title {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            margin-left: 20px;
+        }
+        
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #007bff;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        
+        .user-name {
+            font-weight: 600;
+        }
+        
+        .user-role {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <!-- حاوية التنبيهات -->
+    <div id="alertContainer" class="alert-container"></div>
+    
+    <!-- حاوية تسجيل الدخول -->
+    <div id="loginContainer" style="display: none;">
+        <!-- سيتم إنشاء نموذج تسجيل الدخول هنا -->
+    </div>
+    
+    <!-- حاوية النظام الرئيسية -->
+    <div id="mainContainer" style="display: none;">
+        <!-- شريط التنقل -->
+        <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="#">
+                    <i class="fas fa-users-cog me-2"></i>
+                    نظام إدارة الموارد البشرية
+                </a>
+                
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav me-auto">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#" data-bs-toggle="tab" data-bs-target="#dashboardTab">
+                                <i class="fas fa-tachometer-alt me-1"></i>
+                                لوحة المعلومات
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#employeesTab">
+                                <i class="fas fa-user-tie me-1"></i>
+                                الموظفين
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#settingsTab">
+                                <i class="fas fa-cog me-1"></i>
+                                الإعدادات
+                            </a>
+                        </li>
+                    </ul>
+                    
+                    <!-- معلومات المستخدم -->
+                    <div id="userInfoContainer" class="user-info">
+                        <!-- سيتم إنشاء معلومات المستخدم هنا -->
+                    </div>
+                </div>
+            </div>
+        </nav>
+        
+        <!-- محتوى التبويبات -->
+        <div class="container mt-4">
+            <div class="tab-content">
+                <!-- تبويب لوحة المعلومات -->
+                <div class="tab-pane fade show active" id="dashboardTab">
+                    <div id="dashboardContainer">
+                        <!-- سيتم إنشاء لوحة المعلومات هنا -->
+                    </div>
+                </div>
+                
+                <!-- تبويب الموظفين -->
+                <div class="tab-pane fade" id="employeesTab">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h3>قائمة الموظفين</h3>
+                        <button id="addEmployeeBtn" class="btn btn-primary" onclick="window.HR.openEmployeeForm('add')">
+                            <i class="fas fa-plus-circle me-1"></i>
+                            إضافة موظف
+                        </button>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-body">
+                            <div id="employeeTableContainer">
+                                <table id="employeeTable" class="table table-striped table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>الاسم</th>
+                                            <th>البريد الإلكتروني</th>
+                                            <th>القسم</th>
+                                            <th>المسمى الوظيفي</th>
+                                            <th>الموقع</th>
+                                            <th>الإجراءات</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- سيتم إنشاء صفوف الجدول هنا -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- تبويب الإعدادات -->
+                <div class="tab-pane fade" id="settingsTab">
+                    <h3 class="mb-4">الإعدادات</h3>
+                    
+                    <ul class="nav nav-tabs mb-4">
+                        <li class="nav-item">
+                            <a class="nav-link active" data-bs-toggle="tab" href="#sheetsUrlTab">
+                                <i class="fas fa-link me-1"></i>
+                                رابط Google Sheets
+                            </a>
+                        </li>
+                        <li class="nav-item" id="userManagementTab">
+                            <a class="nav-link" data-bs-toggle="tab" href="#userManagementTab">
+                                <i class="fas fa-users me-1"></i>
+                                إدارة المستخدمين
+                            </a>
+                        </li>
+                        <li class="nav-item" id="fieldManagementTab">
+                            <a class="nav-link" data-bs-toggle="tab" href="#fieldManagementTab">
+                                <i class="fas fa-list me-1"></i>
+                                إدارة الحقول
+                            </a>
+                        </li>
+                        <li class="nav-item" id="statsManagementTab">
+                            <a class="nav-link" data-bs-toggle="tab" href="#statsManagementTab">
+                                <i class="fas fa-chart-bar me-1"></i>
+                                إدارة الإحصائيات
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" data-bs-toggle="tab" href="#referenceDataTab">
+                                <i class="fas fa-database me-1"></i>
+                                البيانات المرجعية
+                            </a>
+                        </li>
+                    </ul>
+                    
+                    <div class="tab-content">
+                        <!-- تبويب رابط Google Sheets -->
+                        <div class="tab-pane fade show active" id="sheetsUrlTab">
+                            <div id="sheetsUrlContainer">
+                                <!-- سيتم إنشاء واجهة إدارة رابط Google Sheets هنا -->
+                            </div>
+                        </div>
+                        
+                        <!-- تبويب إدارة المستخدمين -->
+                        <div class="tab-pane fade" id="userManagementTab">
+                            <div id="userManagementContainer">
+                                <!-- سيتم إنشاء واجهة إدارة المستخدمين هنا -->
+                            </div>
+                        </div>
+                        
+                        <!-- تبويب إدارة الحقول -->
+                        <div class="tab-pane fade" id="fieldManagementTab">
+                            <div id="fieldManagementContainer">
+                                <!-- سيتم إنشاء واجهة إدارة الحقول هنا -->
+                            </div>
+                        </div>
+                        
+                        <!-- تبويب إدارة الإحصائيات -->
+                        <div class="tab-pane fade" id="statsManagementTab">
+                            <div id="statsManagementContainer">
+                                <!-- سيتم إنشاء واجهة إدارة الإحصائيات هنا -->
+                            </div>
+                        </div>
+                        
+                        <!-- تبويب البيانات المرجعية -->
+                        <div class="tab-pane fade" id="referenceDataTab">
+                            <div class="row">
+                                <!-- الأقسام -->
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h5>الأقسام</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <div id="departmentsContainer">
+                                                <!-- سيتم إنشاء قائمة الأقسام هنا -->
+                                            </div>
+                                            <div class="mt-3">
+                                                <div class="input-group">
+                                                    <input type="text" id="newDepartment" class="form-control" placeholder="اسم القسم">
+                                                    <button class="btn btn-primary" onclick="addDepartment()">
+                                                        <i class="fas fa-plus"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- المسميات الوظيفية -->
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h5>المسميات الوظيفية</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <div id="jobTitlesContainer">
+                                                <!-- سيتم إنشاء قائمة المسميات الوظيفية هنا -->
+                                            </div>
+                                            <div class="mt-3">
+                                                <div class="input-group">
+                                                    <input type="text" id="newJobTitle" class="form-control" placeholder="المسمى الوظيفي">
+                                                    <button class="btn btn-primary" onclick="addJobTitle()">
+                                                        <i class="fas fa-plus"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- المواقع -->
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-header">
+                                            <h5>المواقع</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <div id="locationsContainer">
+                                                <!-- سيتم إنشاء قائمة المواقع هنا -->
+                                            </div>
+                                            <div class="mt-3">
+                                                <div class="input-group">
+                                                    <input type="text" id="newLocation" class="form-control" placeholder="اسم الموقع">
+                                                    <button class="btn btn-primary" onclick="addLocation()">
+                                                        <i class="fas fa-plus"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- حاوية نموذج الموظف -->
+    <div id="employeeFormContainer">
+        <!-- سيتم إنشاء نموذج الموظف هنا -->
+    </div>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- وحدات النظام -->
+    <script src="authentication_system.js"></script>
+    <script src="secure_sheets.js"></script>
+    <script src="dynamic_data_parser.js"></script>
+    <script src="dynamic_ui_renderer.js"></script>
+    <script src="dynamic_forms.js"></script>
+    <script src="dynamic_statistics.js"></script>
+    <script src="system_integration.js"></script>
+    
+    <script>
+        // دوال إدارة البيانات المرجعية
+        
+        // إضافة قسم
+        function addDepartment() {
+            const departmentInput = document.getElementById('newDepartment');
+            const department = departmentInput.value.trim();
+            
+            if (!department) {
+                alert('يرجى إدخال اسم القسم');
+                return;
+            }
+            
+            if (window.HR.addDepartment(department)) {
+                departmentInput.value = '';
+                updateDepartmentsList();
+            }
+        }
+        
+        // تحديث قائمة الأقسام
+        function updateDepartmentsList() {
+            const departments = window.HR.getDepartments();
+            const container = document.getElementById('departmentsContainer');
+            
+            container.innerHTML = '';
+            
+            departments.forEach(department => {
+                const item = document.createElement('div');
+                item.className = 'reference-data-item';
+                
+                const name = document.createElement('span');
+                name.textContent = department;
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn btn-sm btn-danger';
+                deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+                deleteBtn.onclick = () => {
+                    if (confirm(`هل أنت متأكد من حذف القسم "${department}"؟`)) {
+                        if (window.HR.deleteDepartment(department)) {
+                            updateDepartmentsList();
+                        }
+                    }
+                };
+                
+                item.appendChild(name);
+                item.appendChild(deleteBtn);
+                container.appendChild(item);
+            });
+        }
+        
+        // إضافة مسمى وظيفي
+        function addJobTitle() {
+            const jobTitleInput = document.getElementById('newJobTitle');
+            const jobTitle = jobTitleInput.value.trim();
+            
+            if (!jobTitle) {
+                alert('يرجى إدخال المسمى الوظيفي');
+                return;
+            }
+            
+            if (window.HR.addJobTitle(jobTitle)) {
+                jobTitleInput.value = '';
+                updateJobTitlesList();
+            }
+        }
+        
+        // تحديث قائمة المسميات الوظيفية
+        function updateJobTitlesList() {
+            const jobTitles = window.HR.getJobTitles();
+            const container = document.getElementById('jobTitlesContainer');
+            
+            container.innerHTML = '';
+            
+            jobTitles.forEach(jobTitle => {
+                const item = document.createElement('div');
+                item.className = 'reference-data-item';
+                
+                const name = document.createElement('span');
+                name.textContent = jobTitle;
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn btn-sm btn-danger';
+                deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+                deleteBtn.onclick = () => {
+                    if (confirm(`هل أنت متأكد من حذف المسمى الوظيفي "${jobTitle}"؟`)) {
+                        if (window.HR.deleteJobTitle(jobTitle)) {
+                            updateJobTitlesList();
+                        }
+                    }
+                };
+                
+                item.appendChild(name);
+                item.appendChild(deleteBtn);
+                container.appendChild(item);
+            });
+        }
+        
+        // إضافة موقع
+        function addLocation() {
+            const locationInput = document.getElementById('newLocation');
+            const location = locationInput.value.trim();
+            
+            if (!location) {
+                alert('يرجى إدخال اسم الموقع');
+                return;
+            }
+            
+            if (window.HR.addLocation(location)) {
+                locationInput.value = '';
+                updateLocationsList();
+            }
+        }
+        
+        // تحديث قائمة المواقع
+        function updateLocationsList() {
+            const locations = window.HR.getLocations();
+            const container = document.getElementById('locationsContainer');
+            
+            container.innerHTML = '';
+            
+            locations.forEach(location => {
+                const item = document.createElement('div');
+                item.className = 'reference-data-item';
+                
+                const name = document.createElement('span');
+                name.textContent = location;
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn btn-sm btn-danger';
+                deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+                deleteBtn.onclick = () => {
+                    if (confirm(`هل أنت متأكد من حذف الموقع "${location}"؟`)) {
+                        if (window.HR.deleteLocation(location)) {
+                            updateLocationsList();
+                        }
+                    }
+                };
+                
+                item.appendChild(name);
+                item.appendChild(deleteBtn);
+                container.appendChild(item);
+            });
+        }
+        
+        // تحديث قوائم البيانات المرجعية عند تحميل الصفحة
+        document.addEventListener('DOMContentLoaded', function() {
+            updateDepartmentsList();
+            updateJobTitlesList();
+            updateLocationsList();
+        });
+    </script>
+</body>
+</html>
