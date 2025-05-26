@@ -593,7 +593,7 @@
                     <h3 class="settings-title">Google Sheets Integration</h3>
                     <div class="form-group">
                         <label>Sheet URL:</label>
-                        <input type="text" id="sheetUrl" placeholder="Google Apps Script URL" value="https://script.google.com/macros/s/AKfycbzssMRrZCJfV0Pknrs5h-WdzSCeXkzZphWDP3XV6Au3ngeaxq50V8AKXwDVs-aJvWgG4w/exec">
+                        <input type="text" id="sheetUrl" placeholder="Google Apps Script URL" value="https://script.google.com/macros/s/AKfycbwywjlpMbHqgcgpRsoHHFZarDp8Xt6NNgIwxzaz-CKzFzueswKxmu1WE4O-tgLaFssuqQ/exec">
                         <button class="btn btn-primary" onclick="updateSheetUrl()" style="margin-top: 10px;">Update URL</button>
                         <button class="btn btn-info" onclick="syncWithSheets()" style="margin-top: 10px;">🔄 Sync Now</button>
                     </div>
@@ -796,7 +796,7 @@
         let dynamicFields = {}; // Store dynamic field definitions
         let editingIndex = -1;
         let charts = {};
-        let sheetsUrl = 'https://script.google.com/macros/s/AKfycbzssMRrZCJfV0Pknrs5h-WdzSCeXkzZphWDP3XV6Au3ngeaxq50V8AKXwDVs-aJvWgG4w/exec';
+        let sheetsUrl = 'https://script.google.com/macros/s/AKfycbwywjlpMbHqgcgpRsoHHFZarDp8Xt6NNgIwxzaz-CKzFzueswKxmu1WE4O-tgLaFssuqQ/exec';
         let isSyncing = false;
 
         // ===============================
@@ -806,7 +806,7 @@
         // إعدادات النظام الافتراضية
         const SYSTEM_CONFIG = {
             // رابط Google Sheets الافتراضي (يمكن تغييره ديناميكياً)
-            defaultSheetsUrl: 'https://script.google.com/macros/s/AKfycbzssMRrZCJfV0Pknrs5h-WdzSCeXkzZphWDP3XV6Au3ngeaxq50V8AKXwDVs-aJvWgG4w/exec',
+            defaultSheetsUrl: 'https://script.google.com/macros/s/AKfycbwywjlpMbHqgcgpRsoHHFZarDp8Xt6NNgIwxzaz-CKzFzueswKxmu1WE4O-tgLaFssuqQ/exec',
             
             // مفتاح تخزين الرابط الافتراضي الجديد
             defaultUrlKey: 'hr_system_default_url',
